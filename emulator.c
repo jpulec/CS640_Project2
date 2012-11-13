@@ -88,8 +88,8 @@ int main(int argc, char **argv) {
     int sockfd;
     struct addrinfo *sp;
     for(sp = senderinfo; sp != NULL; sp = sp->ai_next) {
-        // Try to create a new socket
-        sockfd = socket(sp->ai_family, sp->ai_socktype, sp->ai_protocol);
+        // Try to create a new socket and DON'T block
+        sockfd = socket(sp->ai_family, sp->ai_socktypei | SOCK_NONBLOCK, sp->ai_protocol);
         if (sockfd == -1) {
             perror("Socket error");
             continue;
@@ -107,9 +107,35 @@ int main(int argc, char **argv) {
     if (sp == NULL) perrorExit("Send socket creation failed");
     else            printf("Sender socket created.\n");
 
+    //-------------------------------------------------------------------------
+    // BEGIN NETWORK EMULATION LOOP
+    struct new_packet *curPkt = NULL;
+    struct addrinfo *rp;
+    int delay = 0;
+    unsigned long long prevMS;
+    while(1){
+        size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
+            (struct sockaddr *)rp->ai_addr, &rp->ai_addrlen);
+        
+        if (bytesRecvd != -1) {
+            //TODO: Consult forwarding table to see if packet is to be
+            //forwarded, then enqueue it
+        }
+        // If packet is being delayed, and delay is not expired,
+        // continue loop
+        else if ((prevMS - getTimeMS()) > 0){
+            // Subtract current time from 
+        }
+        else{
+
+        }
+
+    }
+
+    
     // -----------------------------===========================================
     // REQUESTER ADDRESS INFO
-    struct addrinfo rhints;
+    /*struct addrinfo rhints;
     bzero(&rhints, sizeof(struct addrinfo));
     rhints.ai_family   = AF_INET;
     rhints.ai_socktype = SOCK_DGRAM;
@@ -138,7 +164,7 @@ int main(int argc, char **argv) {
     if (sp == NULL) perrorExit("Requester lookup failed to create socket");
     //else            printf("Requester socket created.\n\n");
     close(requestsockfd); // don't need this socket
-
+*/
     // ------------------------------------------------------------------------
     puts("Sender waiting for request packet...\n");
 
