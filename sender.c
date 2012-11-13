@@ -21,9 +21,10 @@
 int main(int argc, char **argv) {
     // ------------------------------------------------------------------------
     // Handle commandline arguments
-    if (argc < 11) {
+    if (argc < 19) {
         printf("usage: sender -p <port> -g <requester port> ");
-        printf("-r <rate> -q <seq_no> -l <length>\n");
+        printf("-r <rate> -q <seq_no> -l <length> -f <f_hostname> ");
+        printf("-h <f_port> -i <priority> -t <timeout>\n");
         exit(1);
     }
 
@@ -32,18 +33,27 @@ int main(int argc, char **argv) {
     char *rateStr    = NULL;
     char *seqNumStr  = NULL;
     char *lenStr     = NULL;
+    char *emu        = NULL;
+    char *emuPortStr = NULL;
+    char *priorityStr= NULL;
+    char *timeoutStr = NULL;
 
     int cmd;
-    while ((cmd = getopt(argc, argv, "p:g:r:q:l:")) != -1) {
+    while ((cmd = getopt(argc, argv, "p:g:r:q:l:f:h:i:t:")) != -1) {
         switch(cmd) {
             case 'p': portStr    = optarg; break;
             case 'g': reqPortStr = optarg; break;
             case 'r': rateStr    = optarg; break;
             case 'q': seqNumStr  = optarg; break;
             case 'l': lenStr     = optarg; break;
+            case 'f': emu        = optarg; break;
+            case 'h': emuPortStr = optarg; break;
+            case 'i': priorityStr= optarg; break;
+            case 't': timeoutStr = optarg; break;
             case '?':
                 if (optopt == 'p' || optopt == 'g' || optopt == 'r'
-                 || optopt == 'q' || optopt == 'l')
+                 || optopt == 'q' || optopt == 'l' || optopt == 'f'
+                 || optopt == 'h' || optopt == 'i' || optopt == 't')
                     fprintf(stderr, "Option -%c requires an argument.\n", optopt);
                 else if (isprint(optopt))
                     fprintf(stderr, "Unknown option -%c.\n", optopt);
@@ -62,6 +72,10 @@ int main(int argc, char **argv) {
     printf("Rate           : %s\n", rateStr);
     printf("Sequence #     : %s\n", seqNumStr);
     printf("Length         : %s\n", lenStr);
+    printf("Emu Name       : %s\n", emu);
+    printf("Emu Port       : %s\n", emuPortStr);
+    printf("Priority       : %s\n", priorityStr);
+    printf("Timeout        : %s\n", timeoutStr);
 
     // Convert program args to values
     int senderPort    = atoi(portStr);
@@ -69,6 +83,9 @@ int main(int argc, char **argv) {
     int sequenceNum   = atoi(seqNumStr);
     int payloadLen    = atoi(lenStr);
     unsigned sendRate = (unsigned) atoi(rateStr);
+    int emuPort       = atoi(emuPortStr);
+    int priority      = atoi(priorityStr);
+    int timeout       = atoi(timeoutStr);
 
     // Validate the argument values
     if (senderPort <= 1024 || senderPort >= 65536)

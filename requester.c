@@ -23,20 +23,28 @@ int main(int argc, char **argv) {
     // ------------------------------------------------------------------------
     // Handle commandline arguments
     if (argc != 5) {
-        printf("usage: requester -p <port> -o <file option>\n");
+        printf("usage: requester -p <port> -o <file option> ");
+        printf("-f <f_hostname> -h <f_port> -w <window>\n");
         exit(1);
     }
 
     char *portStr    = NULL;
     char *fileOption = NULL;
+    char *emu        = NULL;
+    char *emuPortStr = NULL;
+    char *windowStr  = NULL;
 
     int cmd;
-    while ((cmd = getopt(argc, argv, "p:o:")) != -1) {
+    while ((cmd = getopt(argc, argv, "p:o:f:h:w:")) != -1) {
         switch(cmd) {
             case 'p': portStr    = optarg; break;
             case 'o': fileOption = optarg; break;
+            case 'f': emu        = optarg; break;
+            case 'h': emuPortStr = optarg; break;
+            case 'w': windowStr  = optarg; break;
             case '?':
-                if (optopt == 'p' || optopt == 'o')
+                if (optopt == 'p' || optopt == 'o' || optopt == 'f'
+                 || optopt == 'h' || optopt == 'w')
                     fprintf(stderr, "Option -%c requires an argument.\n", optopt);
                 else if (isprint(optopt))
                     fprintf(stderr, "Unknown option -%c.\n", optopt);
@@ -53,9 +61,14 @@ int main(int argc, char **argv) {
     // DEBUG
     printf("Port: %s\n", portStr);
     printf("File: %s\n", fileOption);
+    printf("Emu Name: %s\n", emu);
+    printf("Emu Port: %s\n", emuPortStr);
+    printf("Window: %s\n", windowStr);
 
     // Convert program args to values
     int requesterPort = atoi(portStr);
+    int emuPort       = atoi(emuPortStr);
+    int window        = atoi(windowStr);
 
     // Validate the argument values
     if (requesterPort <= 1024 || requesterPort >= 65536)
