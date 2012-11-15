@@ -26,5 +26,5 @@ emulator
 #Temp files
 *~
 
-# Deploy script
-deploy.sh
+# Output file
+recvd.txt
