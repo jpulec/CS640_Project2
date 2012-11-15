@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
     struct addrinfo *ep;
     for(ep = emuinfo; ep != NULL; ep = ep->ai_next) {
         // Try to create a new socket and DON'T block
-        sockfd = socket(ep->ai_family, ep->ai_socktype | SOCK_NONBLOCK, ep->ai_protocol);
+        sockfd = socket(ep->ai_family, ep->ai_socktype /*| SOCK_NONBLOCK*/, ep->ai_protocol);
         if (sockfd == -1) {
             perror("Socket error");
             continue;
