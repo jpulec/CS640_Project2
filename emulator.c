@@ -18,6 +18,9 @@
 #include "packet.h"
 
 
+void logOut(FILE *log, const char *reason, unsigned long long timestamp, struct packet *pkt);
+
+
 int main(int argc, char **argv) {
     // ------------------------------------------------------------------------
     // Handle commandline arguments
@@ -69,6 +72,14 @@ int main(int argc, char **argv) {
     if (queueSize < 1)
         ferrorExit("Invalid queue size");
     puts("");
+
+
+    // ------------------------------------------------------------------------
+    // Initialize logger
+    FILE *logFile = fopen(log, "wt");
+    if (logFile == NULL) perrorExit("File open error");
+    else                 printf("Opened file \"%s\" for logging.\n", log);
+    logOut(logFile, "  [LOG INITIALIZED]  ", getTimeMS(), NULL);
 
     // ------------------------------------------------------------------------
     // Setup emulator address info 
@@ -420,6 +431,8 @@ int main(int argc, char **argv) {
     free(filename);
     */
 
+    // Close the logger
+    fclose(logFile);
 
     // Got what we came for, shut it down
     if (close(sockfd) == -1) perrorExit("Close error");
@@ -430,5 +443,20 @@ int main(int argc, char **argv) {
 
     // All done!
     exit(EXIT_SUCCESS);
+}
+
+
+void logOut(FILE *log, const char *msg, unsigned long long timestamp, struct packet *pkt) {
+    fprintf(log, "%s : ", msg);
+    if (pkt != NULL) {
+        fprintf(log, "source: %s:%s, dest: %s:%s, time: %llu, priority: %d, payld len: %lu\n",
+                "SRC_HOST", "SRC_PORT", // TODO: get from pkt
+                "DST_HOST", "DST_PORT", // TODO: get from pkt
+                timestamp,
+                1,         // TODO: pkt->priority,
+                pkt->len); // TODO: pkt payload length
+    } else {
+        fprintf(log, "[]\n");
+    }
 }
 

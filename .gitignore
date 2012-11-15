@@ -28,3 +28,6 @@ emulator
 
 # Output file
 recvd.txt
+
+# Log files
+log*
