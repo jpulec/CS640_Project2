@@ -22,15 +22,15 @@
 int main(int argc, char **argv) {
     // ------------------------------------------------------------------------
     // Handle commandline arguments
-    if (argc != 5) {
-        printf("usage: requester -p <port> -o <file option> ");
-        printf("-f <f_hostname> -h <f_port> -w <window>\n");
+    if (argc != 11) {
+        printf("usage: requester -p <port> -f <f_hostname> -h <f_port> ");
+        printf("-o <file option> -w <window>\n");
         exit(1);
     }
 
     char *portStr    = NULL;
     char *fileOption = NULL;
-    char *emu        = NULL;
+    char *emuHostStr = NULL;
     char *emuPortStr = NULL;
     char *windowStr  = NULL;
 
@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
         switch(cmd) {
             case 'p': portStr    = optarg; break;
             case 'o': fileOption = optarg; break;
-            case 'f': emu        = optarg; break;
+            case 'f': emuHostStr = optarg; break;
             case 'h': emuPortStr = optarg; break;
             case 'w': windowStr  = optarg; break;
             case '?':
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
     // DEBUG
     printf("Port: %s\n", portStr);
     printf("File: %s\n", fileOption);
-    printf("Emu Name: %s\n", emu);
+    printf("Emu Name: %s\n", emuHostStr);
     printf("Emu Port: %s\n", emuPortStr);
     printf("Window: %s\n", windowStr);
 
@@ -73,6 +73,7 @@ int main(int argc, char **argv) {
     // Validate the argument values
     if (requesterPort <= 1024 || requesterPort >= 65536)
         ferrorExit("Invalid requester port");
+    puts("");
 
     // ------------------------------------------------------------------------
 
@@ -120,12 +121,12 @@ int main(int argc, char **argv) {
     else            { printf("Requester socket: "); printNameInfo(rp); }
 
     // ------------------------------------------------------------------------
-    // Sender hints TODO: move into part loop
-    struct addrinfo shints;
-    bzero(&shints, sizeof(struct addrinfo));
-    shints.ai_family   = AF_INET;
-    shints.ai_socktype = SOCK_DGRAM;
-    shints.ai_flags    = 0;
+    // Emulator hints
+    struct addrinfo ehints;
+    bzero(&ehints, sizeof(struct addrinfo));
+    ehints.ai_family   = AF_INET;
+    ehints.ai_socktype = SOCK_DGRAM;
+    ehints.ai_flags    = 0;
     
     FILE *file = fopen("recvd.txt", "at");
     if (file == NULL) perrorExit("File open error");
@@ -133,33 +134,35 @@ int main(int argc, char **argv) {
     struct file_part *part = fileParts->parts;
     while (part != NULL) {
         // Convert the sender's port # to a string
+        /*
         char senderPortStr[6] = "\0\0\0\0\0\0";
         sprintf(senderPortStr, "%d", part->sender_port);
-    
-        // Get the sender's address info
-        struct addrinfo *senderinfo;
-        errcode = getaddrinfo(part->sender_hostname, senderPortStr, &shints, &senderinfo);
+        */
+
+        // Setup emulator address info
+        struct addrinfo *emuinfo;
+        errcode = getaddrinfo(emuHostStr, emuPortStr, &ehints, &emuinfo);
         if (errcode != 0) {
-            fprintf(stderr, "sender getaddrinfo: %s\n", gai_strerror(errcode));
+            fprintf(stderr, "emulator getaddrinfo: %s\n", gai_strerror(errcode));
             exit(EXIT_FAILURE);
         }
     
-        // Loop through all the results of getaddrinfo and try to create a socket for sender
-        // NOTE: this is done so that we can find which of the getaddrinfo results is the sender
-        int sendsockfd;
-        struct addrinfo *sp;
-        for(sp = senderinfo; sp != NULL; sp = sp->ai_next) {
-            sendsockfd = socket(sp->ai_family, sp->ai_socktype, sp->ai_protocol);
-            if (sendsockfd == -1) {
+        // Loop through all the results of getaddrinfo and try to create a socket for emulator
+        // NOTE: this is done so that we can find which of the getaddrinfo results is the emulator 
+        int emusockfd;
+        struct addrinfo *ep;
+        for(ep = emuinfo; ep != NULL; ep = ep->ai_next) {
+            emusockfd = socket(ep->ai_family, ep->ai_socktype, ep->ai_protocol);
+            if (emusockfd == -1) {
                 perror("Socket error");
                 continue;
             }
     
             break;
         }
-        if (sp == NULL) perrorExit("Send socket creation failed");
-        //else            printf("Sender socket created.\n\n");
-        close(sendsockfd); // don't need this socket
+        if (ep == NULL) perrorExit("Emulator socket creation failed");
+        //else            printf("Emulator socket created.\n\n");
+        close(emusockfd); // don't need this socket, just created for getaddrinfo
     
         // ------------------------------------------------------------------------
     
@@ -178,7 +181,8 @@ int main(int argc, char **argv) {
         pkt->len  = strlen(fileOption) + 1;
         strcpy(pkt->payload, fileOption);
     
-        sendPacketTo(sockfd, pkt, (struct sockaddr *)sp->ai_addr);
+        // Send REQUEST packet to emulator
+        sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
     
         free(pkt);
     
@@ -187,13 +191,8 @@ int main(int argc, char **argv) {
             remove(fileOption);             // delete it
 
         // ------------------------------------------------------------------------
-        // Connect to senders one at a time to get all parts
-    
-        // TODO: sometimes the requester stops receiving packets 
-        //       even though the sender sends them properly... 
-        //       requester sits blocked in recvfrom below, but doesn't recv 
-        // NOTE: this isn't happening anymore with the rate limit betw 1-1000 pkt/sec
-    
+        // Connect to emulator to receive all parts of requested file
+        /*
         struct sockaddr_storage senderAddr;
         bzero(&senderAddr, sizeof(struct sockaddr_storage));
         socklen_t len = sizeof(senderAddr);
@@ -219,13 +218,13 @@ int main(int argc, char **argv) {
                 ++numPacketsRecvd;
                 numBytesRecvd += pkt->len;
 
-                /* FOR DEBUG
+                / * FOR DEBUG
                 printf("[Packet Details]\n------------------\n");
                 printf("type : %c\n", pkt->type);
                 printf("seq  : %lu\n", pkt->seq);
                 printf("len  : %lu\n", pkt->len);
                 printf("payload: %s\n\n", pkt->payload);
-                */
+                * /
     
                 // Print details about the received packet
                 printf("<- [Received DATA packet] ");
@@ -260,15 +259,17 @@ int main(int argc, char **argv) {
     
         }
         part = part->next_part;
+
         free(pkt);
-        freeaddrinfo(senderinfo);
+        */
+        freeaddrinfo(emuinfo);
     }
 
     fclose(file);
 
     // Got what we came for, shut it down
     if (close(sockfd) == -1) perrorExit("Close error");
-    else                        puts("Connection closed.\n");
+    else                     puts("Connection closed.\n");
 
     // Cleanup address and file info data 
     freeaddrinfo(requesterinfo);
