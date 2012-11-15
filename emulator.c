@@ -66,6 +66,8 @@ int main(int argc, char **argv) {
     // Validate the argument values
     if (port <= 1024 || port >= 65536)
         ferrorExit("Invalid port");
+    if (queueSize < 1)
+        ferrorExit("Invalid queue size");
     puts("");
 
     // ------------------------------------------------------------------------
@@ -109,11 +111,15 @@ int main(int argc, char **argv) {
 
     //-------------------------------------------------------------------------
     // BEGIN NETWORK EMULATION LOOP
+    printf("Begin network emulation loop...\n");
+
     struct new_packet *curPkt = NULL;
     struct addrinfo *rp;
     int delay = 0;
-    unsigned long long prevMS;
-    while(1){
+    unsigned long long prevMS = getTimeMS();
+    unsigned long long sendRate = 1;
+
+    while (1) {
         void *msg = malloc(sizeof(struct packet));
         bzero(msg, sizeof(struct packet));
 
@@ -123,15 +129,25 @@ int main(int argc, char **argv) {
             //TODO: Consult forwarding table to see if packet is to be
             //forwarded, then enqueue it
         }
+        /*
         // If packet is being delayed, and delay is not expired,
         // continue loop
         else if ((prevMS - getTimeMS()) > 0){
             // Subtract current time from 
-        }
-        else{
+        } else {
 
         }
+        */
 
+        unsigned long long dt = getTimeMS() - prevMS;
+        if (dt < 1000 / sendRate) {
+            continue; 
+        } else {
+            prevMS = getTimeMS();
+            printf("tick...\n");
+        }
+
+        free(msg);
     }
 
     
