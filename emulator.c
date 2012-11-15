@@ -109,6 +109,48 @@ int main(int argc, char **argv) {
     if (ep == NULL) perrorExit("Emulator socket creation failed");
     else            printf("Emulator socket created.\n");
 
+
+    // TODO: this is temporary, need to get sender address info from fwd table
+    // Setup sender address info 
+    struct addrinfo shints;
+    bzero(&shints, sizeof(struct addrinfo));
+    shints.ai_family   = AF_INET;
+    shints.ai_socktype = SOCK_DGRAM;
+    shints.ai_flags    = 0;
+
+    // Get the sender's address info
+    struct addrinfo *senderinfo;
+    char *senderPort = "2000\0";
+    errcode = getaddrinfo("mumble-30", senderPort, &shints, &senderinfo);
+    if (errcode != 0) {
+        fprintf(stderr, "sender getaddrinfo: %s\n", gai_strerror(errcode));
+        exit(EXIT_FAILURE);
+    }
+
+    // Loop through all the results of getaddrinfo and try to create a socket for sender
+    int sendsockfd;
+    struct addrinfo *sp;
+    for(sp = senderinfo; sp != NULL; sp = sp->ai_next) {
+        // Try to create a new socket
+        sendsockfd = socket(sp->ai_family, sp->ai_socktype, sp->ai_protocol);
+        if (sendsockfd == -1) {
+            perror("Socket error");
+            continue;
+        }
+
+        // Try to bind the socket
+        if (bind(sendsockfd, sp->ai_addr, sp->ai_addrlen) == -1) {
+            perror("Bind error");
+            close(sendsockfd);
+            continue;
+        }
+
+        break;
+    }
+    if (sp == NULL) perrorExit("Sender socket creation failed");
+    //else            printf("Sender socket created.\n");
+    else            close(sendsockfd);
+
     //-------------------------------------------------------------------------
     // BEGIN NETWORK EMULATION LOOP
     puts("Emulator waiting for request packet...\n");
@@ -153,14 +195,31 @@ int main(int argc, char **argv) {
             ack->len  = pkt->len;
             //strcpy(ack->payload, fileOption);
         
-            sendPacketTo(sockfd, ack, &reqAddr);
+            sendPacketTo(sockfd, ack, (struct sockaddr *)&reqAddr);
         
             // Cleanup packets
             free(ack);
-            free(pkt);
 
             //TODO: Consult forwarding table to see if packet is to be
             //forwarded, then enqueue it
+            //
+            // for now, just forward it directly to sender...
+            sendPacketTo(sockfd, pkt, (struct sockaddr *)sp->ai_addr);
+
+            free (msg);
+            msg = malloc(sizeof(struct packet));
+            bzero(msg, sizeof(struct packet));
+
+            // Wait for a response 
+            bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
+                (struct sockaddr *)sp->ai_addr, &sp->ai_addrlen);
+            if (bytesRecvd != -1) {
+                printf("<- [Received response from sender]\n");
+            } else {
+                printf("** Failed to receive response from sender **\n");
+            }
+
+            free(pkt);
         }
         /*
         // If packet is being delayed, and delay is not expired,
@@ -226,7 +285,6 @@ int main(int argc, char **argv) {
         void *msg = malloc(sizeof(struct packet));
         bzero(msg, sizeof(struct packet));
 
-        /*
         // Receive a message
         size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
             (struct sockaddr *)rp->ai_addr, &rp->ai_addrlen);
@@ -291,7 +349,6 @@ int main(int argc, char **argv) {
         }
 
         // Send rate limiter
-        /*
         unsigned long long dt = getTimeMS() - start;
         if (dt < 1000 / sendRate) {
             continue; 
@@ -317,7 +374,6 @@ int main(int argc, char **argv) {
         fread(buf, 1, payloadLen, file); // TODO: check return value
         memcpy(pkt->payload, buf, sizeof(buf));
 
-        /*
         printf("[Packet Details]\n------------------\n");
         printf("type : %c\n", pkt->type);
         printf("seq  : %lu\n", pkt->seq);
