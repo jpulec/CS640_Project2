@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
     // Handle commandline arguments
     if (argc < 9) {
         printf("usage: emulator -p <port> -q <queue_size> ");
-        printf("-f <filename> -f <log>\n");
+        printf("-f <filename> -l <log>\n");
         exit(1);
     }
 
@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
     struct addrinfo *sp;
     for(sp = senderinfo; sp != NULL; sp = sp->ai_next) {
         // Try to create a new socket and DON'T block
-        sockfd = socket(sp->ai_family, sp->ai_socktypei | SOCK_NONBLOCK, sp->ai_protocol);
+        sockfd = socket(sp->ai_family, sp->ai_socktype | SOCK_NONBLOCK, sp->ai_protocol);
         if (sockfd == -1) {
             perror("Socket error");
             continue;
@@ -114,9 +114,11 @@ int main(int argc, char **argv) {
     int delay = 0;
     unsigned long long prevMS;
     while(1){
+        void *msg = malloc(sizeof(struct packet));
+        bzero(msg, sizeof(struct packet));
+
         size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
-            (struct sockaddr *)rp->ai_addr, &rp->ai_addrlen);
-        
+            (struct sockaddr *)sp->ai_addr, &sp->ai_addrlen);
         if (bytesRecvd != -1) {
             //TODO: Consult forwarding table to see if packet is to be
             //forwarded, then enqueue it
@@ -169,11 +171,12 @@ int main(int argc, char **argv) {
     puts("Sender waiting for request packet...\n");
 
     // Receive and discard packets until a REQUEST packet arrives
-    char *filename = NULL;
+    //char *filename = NULL;
     for (;;) {
         void *msg = malloc(sizeof(struct packet));
         bzero(msg, sizeof(struct packet));
 
+        /*
         // Receive a message
         size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
             (struct sockaddr *)rp->ai_addr, &rp->ai_addrlen);
@@ -205,6 +208,7 @@ int main(int argc, char **argv) {
 
         // Cleanup packets
         free(pkt);
+        */
         free(msg);
     }
 
@@ -236,12 +240,18 @@ int main(int argc, char **argv) {
         }
 
         // Send rate limiter
+        /*
         unsigned long long dt = getTimeMS() - start;
         if (dt < 1000 / sendRate) {
             continue; 
         } else {
             start = getTimeMS();
         }
+        */
+
+        // TODO 
+        unsigned long sequenceNum = 1;
+        unsigned long payloadLen  = 32;
 
         // Create DATA packet
         pkt = malloc(sizeof(struct packet));
