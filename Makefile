@@ -1,15 +1,24 @@
-CFLAGS=-g -Wall
-LDFLAGS=
 CC=gcc
-SHARED_SOURCES=utilities.c packet.c tracker.c
-EXECUTABLES=sender requester emulator
-.PHONY=all
-.DEFAULT=all
+CFLAGS=-Wall -std=gnu99 -ggdb3
 
-all: $(EXECUTABLES)
+all: requester sender emulator
 
-$(EXECUTABLES): $(SHARED_SOURCES)
-	$(CC) $(CFLAGS) $@.c $^ -o $@
+requester: requester.c tracker.c utilities.c packet.c
+	@echo "  [Building requester...]"; \
+	$(CC) $(CFLAGS) -o $@ $^;          \
+	echo "  [complete]"
+
+sender: sender.c utilities.c packet.c
+	@echo "  [Building sender...]"; \
+	$(CC) $(CFLAGS) -o $@ $^;       \
+	echo "  [complete]"
+
+emulator: emulator.c utilities.c packet.c
+	@echo "  [Building emulator...]"; \
+	$(CC) $(CFLAGS) -o $@ $^;         \
+	echo "  [complete]"
 
 clean:
-	rm -rf *.o $(EXECUTABLES)
+	@echo "Cleaning..."; \
+	rm -rf *.o requester sender emulator
+
