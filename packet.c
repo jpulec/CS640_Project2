@@ -80,11 +80,12 @@ void printPacketInfo(struct packet *pkt, struct sockaddr_storage *saddr) {
         ipport = ntohs(sin->sin_port);
     }
 
+    // Get 'preview' bytes (replacing unprintables with '_')
     char pl_bytes[5];
-    pl_bytes[0] = pkt->payload[0]; 
-    pl_bytes[1] = pkt->payload[1]; 
-    pl_bytes[2] = pkt->payload[2]; 
-    pl_bytes[3] = pkt->payload[3]; 
+    pl_bytes[0] = (pkt->payload[0] >= 0 && pkt->payload[0] <= 31) ? '_' : pkt->payload[0];
+    pl_bytes[1] = (pkt->payload[1] >= 0 && pkt->payload[1] <= 31) ? '_' : pkt->payload[1];
+    pl_bytes[2] = (pkt->payload[2] >= 0 && pkt->payload[2] <= 31) ? '_' : pkt->payload[2];
+    pl_bytes[3] = (pkt->payload[3] >= 0 && pkt->payload[3] <= 31) ? '_' : pkt->payload[3];
     pl_bytes[4] = '\0';
 
     printf("@%llu ms : ip %s:%u : seq %lu : len %lu : pld \"%s\"\n",

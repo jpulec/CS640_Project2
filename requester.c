@@ -196,68 +196,67 @@ int main(int argc, char **argv) {
         if (bytesRecvd != -1) {
             printf("<- [Received ACK]: ");
             printPacketInfo(pkt, (struct sockaddr_storage *)&emuAddr);
-            break;
         } else {
             perrorExit("Recv failed.\n");
         }
 
         // Create the file to write data to
+        /*
         if (access(fileOption, F_OK) != -1) // if it already exists
             remove(fileOption);             // delete it
+        */
 
         // ------------------------------------------------------------------------
         // Connect to emulator to receive all parts of requested file
-        /*
-        struct sockaddr_storage senderAddr;
-        bzero(&senderAddr, sizeof(struct sockaddr_storage));
-        socklen_t len = sizeof(senderAddr);
-    
+
         // Start a recv loop here to get all packets for the given part
         for (;;) {
-            void *msg = malloc(sizeof(struct packet));
-            bzero(msg, sizeof(struct packet));
-    
             // Receive a message 
-            size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
-                (struct sockaddr *)&senderAddr, &len);
+            struct packet msg;
+            bzero(&msg, sizeof(struct packet));
+            size_t bytesRecvd = recvfrom(sockfd, &msg, sizeof(struct packet), 0,
+                (struct sockaddr *)ep->ai_addr, &ep->ai_addrlen);
             if (bytesRecvd == -1) perrorExit("Receive error");
     
             // Deserialize the message into a packet
-            pkt = malloc(sizeof(struct packet));
-            bzero(pkt, sizeof(struct packet));
-            deserializePacket(msg, pkt);
+            struct packet p;
+            bzero(&p, sizeof(struct packet));
+            deserializePacket(&msg, &p);
     
             // Handle DATA packet
-            if (pkt->type == 'D') {
+            if (p.type == 'D') {
                 // Update statistics
                 ++numPacketsRecvd;
-                numBytesRecvd += pkt->len;
+                numBytesRecvd += p.len;
 
-                / * FOR DEBUG
+                /* FOR DEBUG
                 printf("[Packet Details]\n------------------\n");
-                printf("type : %c\n", pkt->type);
-                printf("seq  : %lu\n", pkt->seq);
-                printf("len  : %lu\n", pkt->len);
-                printf("payload: %s\n\n", pkt->payload);
-                * /
+                printf("type : %c\n", p.type);
+                printf("seq  : %lu\n", p.seq);
+                printf("len  : %lu\n", p.len);
+                printf("payload: %s\n\n", p.payload);
+                */
     
                 // Print details about the received packet
                 printf("<- [Received DATA packet] ");
-                printPacketInfo(pkt, (struct sockaddr_storage *)&senderAddr);
+                printPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
     
                 // Save the data so the file can be reassembled later
-                size_t bytesWritten = fprintf(file, "%s", pkt->payload);
-                if (bytesWritten != pkt->len) {
+                size_t bytesWritten = fprintf(file, "%s", p.payload);
+                fflush(file);
+                /*
+                if (bytesWritten != p.len) {
                     fprintf(stderr,
-                        "Incomplete file write: %d bytes written, %lu pkt len",
-                        (int)bytesWritten, pkt->len);
+                        "Incomplete file write: %d bytes written, %lu p len",
+                        (int)bytesWritten, p.len);
                 } else {
                     fflush(file);
                 }
+                */
             }
     
             // Handle END packet
-            if (pkt->type == 'E') {
+            if (p.type == 'E') {
                 printf("<- *** [Received END packet] ***");
                 double dt = difftime(time(NULL), startTime);
                 if (dt <= 1) dt = 1;
@@ -271,15 +270,13 @@ int main(int argc, char **argv) {
     
                 break;
             }
-    
         }
         part = part->next_part;
 
-        free(pkt);
-        */
         freeaddrinfo(emuinfo);
     }
 
+    // TODO: this crashes the program... figure out why
     //fclose(file);
 
     // Got what we came for, shut it down

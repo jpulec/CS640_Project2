@@ -216,10 +216,9 @@ int main(int argc, char **argv) {
 
                 // Wait for a response 
                 size_t recvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
-                    (struct sockaddr *)&sendAddr, &sendLen);
-                   // (struct sockaddr *)sp->ai_addr, &sp->ai_addrlen);
+                    (struct sockaddr *)sp->ai_addr, &sp->ai_addrlen);
                 if (recvd != -1) {
-                    printf("Received %d bytes\n", (int)recvd);
+                    //printf("Received %d bytes\n", (int)recvd);
                     
                     // Deserialize the message into a packet 
                     free (pkt);
@@ -230,9 +229,18 @@ int main(int argc, char **argv) {
                     if (pkt->type == 'D') {
                         printf("<- [Received DATA]: ");
                         printPacketInfo(pkt, (struct sockaddr_storage *)&sendAddr);
+
+                        // TODO: put pkt in queue and then forward according to routing table
+                        printf("---> [Forwarding] :\n  ");
+                        sendPacketTo(sockfd, pkt, (struct sockaddr *)&reqAddr);
                     } else if (pkt->type == 'E') {
                         printf("<- [Received END]: ");
                         printPacketInfo(pkt, (struct sockaddr_storage *)&sendAddr);
+
+                        // TODO: put pkt in queue and then forward according to routing table
+                        printf("---> [Forwarding] : ");
+                        sendPacketTo(sockfd, pkt, (struct sockaddr *)&reqAddr);
+
                         recvdEndPacket = 1;
                     }
                 } else {
@@ -251,14 +259,6 @@ int main(int argc, char **argv) {
 
         }
         */
-        // Print a waiting message every few seconds...
-        unsigned long long dt = getTimeMS() - prevMS;
-        if (dt < 1000 / 0.1) {//sendRate) {
-            continue; 
-        } else {
-            prevMS = getTimeMS();
-            printf("tick...\n");
-        }
 
         free(msg);
     }

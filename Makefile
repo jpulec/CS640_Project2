@@ -20,5 +20,5 @@ emulator: emulator.c utilities.c packet.c
 
 clean:
 	@echo "Cleaning..."; \
-	rm -rf *.o requester sender emulator
+	rm -rf *.o recvd.txt requester sender emulator
 
