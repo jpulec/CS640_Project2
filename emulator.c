@@ -156,8 +156,9 @@ int main(int argc, char **argv) {
     puts("Emulator waiting for request packet...\n");
 
     struct new_packet *curPkt = NULL;
-    struct sockaddr_in reqAddr;
+    struct sockaddr_in reqAddr, sendAddr;
     socklen_t reqLen = sizeof(reqAddr);
+    socklen_t sendLen = sizeof(sendAddr);
 
     int delay = 0;
     int hasRequestPacket = 0;
@@ -207,16 +208,36 @@ int main(int argc, char **argv) {
             sendPacketTo(sockfd, pkt, (struct sockaddr *)sp->ai_addr);
 
             free (msg);
-            msg = malloc(sizeof(struct packet));
-            bzero(msg, sizeof(struct packet));
 
-            // Wait for a response 
-            bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
-                (struct sockaddr *)sp->ai_addr, &sp->ai_addrlen);
-            if (bytesRecvd != -1) {
-                printf("<- [Received response from sender]\n");
-            } else {
-                printf("** Failed to receive response from sender **\n");
+            int recvdEndPacket = 0;
+            while (!recvdEndPacket) {
+                msg = malloc(sizeof(struct packet));
+                bzero(msg, sizeof(struct packet));
+
+                // Wait for a response 
+                size_t recvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
+                    (struct sockaddr *)&sendAddr, &sendLen);
+                   // (struct sockaddr *)sp->ai_addr, &sp->ai_addrlen);
+                if (recvd != -1) {
+                    printf("Received %d bytes\n", (int)recvd);
+                    
+                    // Deserialize the message into a packet 
+                    free (pkt);
+                    pkt = malloc(sizeof(struct packet));
+                    bzero(pkt, sizeof(struct packet));
+                    deserializePacket(msg, pkt);
+
+                    if (pkt->type == 'D') {
+                        printf("<- [Received DATA]: ");
+                        printPacketInfo(pkt, (struct sockaddr_storage *)&sendAddr);
+                    } else if (pkt->type == 'E') {
+                        printf("<- [Received END]: ");
+                        printPacketInfo(pkt, (struct sockaddr_storage *)&sendAddr);
+                        recvdEndPacket = 1;
+                    }
+                } else {
+                    printf("** Failed to receive response from sender **\n");
+                }
             }
 
             free(pkt);
