@@ -71,34 +71,34 @@ int main(int argc, char **argv) {
     puts("");
 
     // ------------------------------------------------------------------------
-    // Setup sender address info 
-    struct addrinfo shints;
-    bzero(&shints, sizeof(struct addrinfo));
-    shints.ai_family   = AF_INET;
-    shints.ai_socktype = SOCK_DGRAM;
-    shints.ai_flags    = AI_PASSIVE;
+    // Setup emulator address info 
+    struct addrinfo ehints;
+    bzero(&ehints, sizeof(struct addrinfo));
+    ehints.ai_family   = AF_INET;
+    ehints.ai_socktype = SOCK_DGRAM;
+    ehints.ai_flags    = AI_PASSIVE;
 
-    // Get the sender's address info
-    struct addrinfo *senderinfo;
-    int errcode = getaddrinfo(NULL, portStr, &shints, &senderinfo);
+    // Get the emulator's address info
+    struct addrinfo *emuinfo;
+    int errcode = getaddrinfo(NULL, portStr, &ehints, &emuinfo);
     if (errcode != 0) {
-        fprintf(stderr, "sender getaddrinfo: %s\n", gai_strerror(errcode));
+        fprintf(stderr, "emulator getaddrinfo: %s\n", gai_strerror(errcode));
         exit(EXIT_FAILURE);
     }
 
     // Loop through all the results of getaddrinfo and try to create a socket for sender
     int sockfd;
-    struct addrinfo *sp;
-    for(sp = senderinfo; sp != NULL; sp = sp->ai_next) {
+    struct addrinfo *ep;
+    for(ep = emuinfo; ep != NULL; ep = ep->ai_next) {
         // Try to create a new socket and DON'T block
-        sockfd = socket(sp->ai_family, sp->ai_socktype | SOCK_NONBLOCK, sp->ai_protocol);
+        sockfd = socket(ep->ai_family, ep->ai_socktype | SOCK_NONBLOCK, ep->ai_protocol);
         if (sockfd == -1) {
             perror("Socket error");
             continue;
         }
 
         // Try to bind the socket
-        if (bind(sockfd, sp->ai_addr, sp->ai_addrlen) == -1) {
+        if (bind(sockfd, ep->ai_addr, ep->ai_addrlen) == -1) {
             perror("Bind error");
             close(sockfd);
             continue;
@@ -106,26 +106,59 @@ int main(int argc, char **argv) {
 
         break;
     }
-    if (sp == NULL) perrorExit("Send socket creation failed");
-    else            printf("Sender socket created.\n");
+    if (ep == NULL) perrorExit("Emulator socket creation failed");
+    else            printf("Emulator socket created.\n");
 
     //-------------------------------------------------------------------------
     // BEGIN NETWORK EMULATION LOOP
-    printf("Begin network emulation loop...\n");
+    puts("Emulator waiting for request packet...\n");
 
     struct new_packet *curPkt = NULL;
-    struct addrinfo *rp;
+    struct sockaddr_in reqAddr;
+    socklen_t reqLen = sizeof(reqAddr);
+
     int delay = 0;
+    int hasRequestPacket = 0;
+
     unsigned long long prevMS = getTimeMS();
     unsigned long long sendRate = 1;
 
-    while (1) {
+    while (!hasRequestPacket) {
         void *msg = malloc(sizeof(struct packet));
         bzero(msg, sizeof(struct packet));
 
         size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
-            (struct sockaddr *)sp->ai_addr, &sp->ai_addrlen);
+            (struct sockaddr *)&reqAddr, &reqLen);
         if (bytesRecvd != -1) {
+            printf("Received %d bytes\n", (int)bytesRecvd);
+            
+            // Deserialize the message into a packet 
+            struct packet *pkt = malloc(sizeof(struct packet));
+            bzero(pkt, sizeof(struct packet));
+            deserializePacket(msg, pkt);
+
+            if (pkt->type == 'R') {
+                hasRequestPacket = 1;
+
+                // Print some statistics for the recvd packet
+                printf("<- [Received REQUEST]: ");
+                printPacketInfo(pkt, (struct sockaddr_storage *)&reqAddr);
+            }
+
+            // Send ACK packet back
+            struct packet *ack = malloc(sizeof(struct packet));
+            bzero(ack, sizeof(struct packet));
+            ack->type = 'A';
+            ack->seq  = 0;
+            ack->len  = pkt->len;
+            //strcpy(ack->payload, fileOption);
+        
+            sendPacketTo(sockfd, ack, &reqAddr);
+        
+            // Cleanup packets
+            free(ack);
+            free(pkt);
+
             //TODO: Consult forwarding table to see if packet is to be
             //forwarded, then enqueue it
         }
@@ -138,9 +171,9 @@ int main(int argc, char **argv) {
 
         }
         */
-
+        // Print a waiting message every few seconds...
         unsigned long long dt = getTimeMS() - prevMS;
-        if (dt < 1000 / sendRate) {
+        if (dt < 1000 / 0.1) {//sendRate) {
             continue; 
         } else {
             prevMS = getTimeMS();
@@ -184,6 +217,7 @@ int main(int argc, char **argv) {
     close(requestsockfd); // don't need this socket
 */
     // ------------------------------------------------------------------------
+    /*
     puts("Sender waiting for request packet...\n");
 
     // Receive and discard packets until a REQUEST packet arrives
@@ -224,14 +258,15 @@ int main(int argc, char **argv) {
 
         // Cleanup packets
         free(pkt);
-        */
+        * /
         free(msg);
     }
+    */
 
     // ------------------------------------------------------------------------
     // Got REQUEST packet, start sending DATA packets
     // ------------------------------------------------------------------------
-
+    /*
     // Open file for reading
     FILE *file = fopen(filename, "r");
     if (file == NULL) perrorExit("File open error");
@@ -249,7 +284,7 @@ int main(int argc, char **argv) {
             pkt->seq  = 0;
             pkt->len  = 0;
 
-            sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
+            //sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
 
             free(pkt);
             break;
@@ -263,7 +298,7 @@ int main(int argc, char **argv) {
         } else {
             start = getTimeMS();
         }
-        */
+        * /
 
         // TODO 
         unsigned long sequenceNum = 1;
@@ -288,10 +323,10 @@ int main(int argc, char **argv) {
         printf("seq  : %lu\n", pkt->seq);
         printf("len  : %lu\n", pkt->len);
         printf("payload: %s\n\n", pkt->payload);
-        */
+        * /
 
         // Send the DATA packet to the requester 
-        sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
+        //sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
 
         // Cleanup packets
         free(pkt);
@@ -299,11 +334,14 @@ int main(int argc, char **argv) {
         // Update sequence number for next packet
         sequenceNum += payloadLen;
     }
+    */
 
     // Cleanup the file
+    /*
     if (fclose(file) != 0) fprintf(stderr, "Failed to close file \"%s\"\n", filename);
     else                   printf("File \"%s\" closed.\n", filename);
     free(filename);
+    */
 
 
     // Got what we came for, shut it down
@@ -311,7 +349,7 @@ int main(int argc, char **argv) {
     else                     puts("Connection closed.\n");
 
     // Cleanup address info data
-    freeaddrinfo(senderinfo);
+    freeaddrinfo(emuinfo);
 
     // All done!
     exit(EXIT_SUCCESS);

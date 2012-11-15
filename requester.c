@@ -172,7 +172,8 @@ int main(int argc, char **argv) {
         time_t startTime = time(NULL);
     
         // ------------------------------------------------------------------------
-        // Construct a REQUEST packet
+        // Construct a REQUEST packet and send it to the emulator
+        // TODO: get emulator host:port from tracker?
         struct packet *pkt = NULL;
         pkt = malloc(sizeof(struct packet));
         bzero(pkt, sizeof(struct packet));
@@ -181,11 +182,25 @@ int main(int argc, char **argv) {
         pkt->len  = strlen(fileOption) + 1;
         strcpy(pkt->payload, fileOption);
     
-        // Send REQUEST packet to emulator
         sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
     
         free(pkt);
     
+        // ------------------------------------------------------------------------
+        // Wait for an ACK on the request packet
+        // TODO: this is temporary
+        struct sockaddr_in emuAddr;
+        socklen_t emuLen = sizeof(emuAddr);
+        int bytesRecvd = recvfrom(sockfd, pkt, sizeof(struct packet), 0,
+            (struct sockaddr *)&emuAddr, &emuLen);
+        if (bytesRecvd != -1) {
+            printf("<- [Received ACK]: ");
+            printPacketInfo(pkt, (struct sockaddr_storage *)&emuAddr);
+            break;
+        } else {
+            perrorExit("Recv failed.\n");
+        }
+
         // Create the file to write data to
         if (access(fileOption, F_OK) != -1) // if it already exists
             remove(fileOption);             // delete it
@@ -265,7 +280,7 @@ int main(int argc, char **argv) {
         freeaddrinfo(emuinfo);
     }
 
-    fclose(file);
+    //fclose(file);
 
     // Got what we came for, shut it down
     if (close(sockfd) == -1) perrorExit("Close error");

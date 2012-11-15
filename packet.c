@@ -56,6 +56,7 @@ void sendPacketTo(int sockfd, struct packet *pkt, struct sockaddr *addr) {
         if      (pkt->type == 'R') typeStr = "**REQUEST**";
         else if (pkt->type == 'D') typeStr = "DATA";
         else if (pkt->type == 'E') typeStr = "**END***";
+        else if (pkt->type == 'A') typeStr = "ACK";
         else                       typeStr = "UNDEFINED";
 
         printf("-> [Sent %s packet] ", typeStr);
