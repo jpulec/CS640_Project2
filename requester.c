@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
         strcpy(pkt->pkt.payload, fileOption);
    
 
-	sendNewPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
+	sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
 
         free(pkt);
     
@@ -230,7 +230,7 @@ int main(int argc, char **argv) {
             (struct sockaddr *)&emuAddr, &emuLen);
         if (bytesRecvd != -1) {
             printf("<- [Received ACK]: ");
-            printNewPacketInfo(pkt, (struct sockaddr_storage *)&emuAddr);
+            printPacketInfo(pkt, (struct sockaddr_storage *)&emuAddr);
         } else {
             perrorExit("Recv failed.\n");
         }
@@ -256,7 +256,7 @@ int main(int argc, char **argv) {
             // Deserialize the message into a packet
             struct new_packet p;
             bzero(&p, sizeof(struct new_packet));
-            deserializeNewPacket(&msg, &p);
+            deserializePacket(&msg, &p);
     
             // Handle DATA packet
             if (p.pkt.type == 'D') {
@@ -274,7 +274,7 @@ int main(int argc, char **argv) {
     
                 // Print details about the received packet
                 printf("<- [Received DATA packet] ");
-                printNewPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
+                printPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
     
                 // Save the data so the file can be reassembled later
                 size_t bytesWritten = fprintf(file, "%s", p.pkt.payload);

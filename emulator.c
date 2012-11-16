@@ -15,7 +15,6 @@
 #include <netdb.h>
 
 #include "utilities.h"
-#include "packet.h"
 #include "newpacket.h"
 #include "table.h"
 
@@ -168,7 +167,7 @@ int main(int argc, char **argv) {
 			// Deserialize the message into a packet 
 			struct new_packet *pkt = malloc(sizeof(struct new_packet));
 			bzero(pkt, sizeof(struct new_packet));
-			deserializeNewPacket(msg, pkt);
+			deserializePacket(msg, pkt);
 
 
 			//TODO: Consult forwarding table to see if packet is to be
@@ -231,7 +230,7 @@ int main(int argc, char **argv) {
 					fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
 				}
 				else{
-					sendNewPacketTo(sockfd, delayedPkt, (struct sockaddr*)&nextAddr);
+					sendPacketTo(sockfd, delayedPkt, (struct sockaddr*)&nextAddr);
 				}
 			}	
 		}
