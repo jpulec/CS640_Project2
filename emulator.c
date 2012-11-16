@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
 				    (struct sockaddr *)&recvAddr, &recvLen);
 		struct forward_entry *curEntry;
 		if (bytesRecvd != -1) {
-			printf("Received %d bytes\n", (int)bytesRecvd);
+			//printf("Received %d bytes\n", (int)bytesRecvd);
 			// Deserialize the message into a packet 
 			struct new_packet *pkt = malloc(sizeof(struct new_packet));
 			bzero(pkt, sizeof(struct new_packet));
@@ -360,7 +360,7 @@ void enqueuePkt(struct new_packet *pkt) {
 	
 	// Pick the appropriate queue
 	struct packet_node *q = NULL, *queue = NULL;
-	switch (1) { // TODO: implement packet priority: pkt->priority) {
+	switch (pkt->priority) {
 		case 1: q = queue1t; 
 			q->next = malloc(sizeof(struct packet_node));
 			queue1t = q->next;
@@ -404,7 +404,7 @@ void enqueuePkt(struct new_packet *pkt) {
 	else if (queue == queue3t) ++q3num;
 
 	// DEBUG
-	printf("Enqueued pkt: seq = %lu\n", pkt->pkt.seq);
+	//printf("Enqueued pkt: priority = %d, seq = %lu\n", pkt->priority, pkt->pkt.seq);
 }
 
 struct new_packet *dequeuePkt(struct packet_node *q) {
@@ -412,7 +412,7 @@ struct new_packet *dequeuePkt(struct packet_node *q) {
 	// Update the number of enqueued packets
 	if (q->next != NULL){
 		if (q->next->pkt != NULL){
-			printf("Dequeued pkt: seq = %lu\n", q->next->pkt->pkt.seq);
+			//printf("Dequeued pkt: seq = %lu\n", q->next->pkt->pkt.seq);
 		}
 		return q->next->pkt;
 	}
@@ -422,14 +422,17 @@ struct new_packet *dequeuePkt(struct packet_node *q) {
 void logOut(const char *msg, unsigned long long timestamp, struct new_packet *pkt) {
 	fprintf(logFile, "%s : ", msg);
 	if (pkt != NULL) {
+        struct in_addr srcip, dstip;
+        srcip.s_addr = pkt->src_ip;
+        dstip.s_addr = pkt->dst_ip;
 		fprintf(logFile,
                 "source: %s:%d, dest: %s:%d, time: %llu, priority: %d, payld len: %lu, type: %c\n",
-				inet_ntoa(*(struct in_addr *)&pkt->src_ip), // TODO: not working correctly, always 2.0.0.0
+				inet_ntoa(srcip), // TODO: not working correctly, always 2.0.0.0
                 pkt->src_port,
-				inet_ntoa(*(struct in_addr *)&pkt->dst_ip), // TODO: not working correctly, always 2.0.0.0
+				inet_ntoa(dstip), // TODO: not working correctly, always 2.0.0.0
                 pkt->dst_port,
 				timestamp,
-				(int)pkt->priority, // TODO: always reported as 0.... 
+				(int)pkt->priority,
 				pkt->pkt.len,
                 pkt->pkt.type); // TODO for debug.. remove eventually
 	} else {

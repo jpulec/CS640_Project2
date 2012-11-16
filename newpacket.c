@@ -43,7 +43,7 @@ void deserializePacket(void *msg, struct new_packet *pkt) {
     }
 
     struct new_packet *p = (struct new_packet *)msg;
-    pkt->priority = pkt->priority;
+    pkt->priority = p->priority;
     pkt->src_ip   = ntohl(p->src_ip);
     pkt->src_port = ntohs(p->src_port);
     pkt->dst_ip   = ntohl(p->dst_ip);
