@@ -100,8 +100,8 @@ void printPacketInfo(struct new_packet *pkt, struct sockaddr_storage *saddr) {
     pl_bytes[3] = (pkt->pkt.payload[3] >= 0 && pkt->pkt.payload[3] <= 31) ? '_' : pkt->pkt.payload[3];
     pl_bytes[4] = '\0';
 
-    printf("@%llu ms : ip %s:%u : seq %lu : len %lu : pld \"%s\"\n",
-        getTimeMS(), ipstr, ipport, pkt->pkt.seq, pkt->pkt.len, pl_bytes);
+    printf("@%llu ms : ip %s:%u : seq %lu : len %lu : pri %d : pld \"%s\"\n",
+        getTimeMS(), ipstr, ipport, pkt->pkt.seq, pkt->pkt.len, pkt->priority, pl_bytes);
     /*
     printf("  new_packet from %s:%u (%lu payload bytes):\n",ipstr,ipport,pkt->pkt.len);
     printf("    type = %c\n",  pkt->pkt.type);

@@ -200,8 +200,9 @@ int main(int argc, char **argv) {
 			int errcode = getaddrinfo(curEntry->dst_hostname, NULL, &entryHints, &entryInfo);
 			
 			if( errcode != 0 ){
-				fprintf(stderr, "cannot resolve hostname:%s", curEntry->dst_hostname);
-				fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
+				//fprintf(stderr, "cannot resolve hostname:%s", curEntry->dst_hostname);
+				//fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
+                logOut("Packet dropped: cannot resolve hostname", getTimeMS(), pkt);
 				free(pkt);
 				continue;
 			}
@@ -235,8 +236,9 @@ int main(int argc, char **argv) {
 			}
 			
 			if(curEntry == NULL){
-				printf("Error: no forwarding info for destination:%lu on port:%hu", pkt->dst_ip, pkt->dst_port);
-				fprintf(logFile, "PACKET DROPPED\nDST_IP:%lu", pkt->dst_ip);
+				//printf("Error: no forwarding info for destination:%lu on port:%hu", pkt->dst_ip, pkt->dst_port);
+				//fprintf(logFile, "PACKET DROPPED\nDST_IP:%lu", pkt->dst_ip);
+                logOut("Packet dropped: no forwarding info for dest", getTimeMS(), pkt);
 				free(pkt);
 				continue;
 			}
@@ -255,8 +257,9 @@ int main(int argc, char **argv) {
 			errcode = getaddrinfo(curEntry->next_hostname, str, &nextHints, &nextInfo);
 			
 			if( errcode != 0 ){
-				fprintf(stderr, "cannot resolve hostname:%s", curEntry->next_hostname);
-				fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->next_hostname);
+				//fprintf(stderr, "cannot resolve hostname:%s", curEntry->next_hostname);
+				//fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->next_hostname);
+                logOut("Packet dropped: cannot resolve hostname", getTimeMS(), pkt);
 				free(pkt);
 				continue;
 			}
@@ -289,8 +292,12 @@ int main(int argc, char **argv) {
 			else{
 				// Determine whether or not to drop pkt
 				int r = ( 100.0 * rand() / ( RAND_MAX + 1.0));
-				if(r <= curEntry->loss){
-					fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
+                // Don't drop END or REQ pkts
+				if(r <= curEntry->loss
+                 && delayedPkt->pkt.type != 'E'
+                 && delayedPkt->pkt.type != 'R') {
+					//fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
+                    logOut("Packet dropped", getTimeMS(), delayedPkt);
 				}
 				else{
 					sendPacketTo(sockfd, delayedPkt, (struct sockaddr *)np->ai_addr);
@@ -415,14 +422,20 @@ struct new_packet *dequeuePkt(struct packet_node *q) {
 void logOut(const char *msg, unsigned long long timestamp, struct new_packet *pkt) {
 	fprintf(logFile, "%s : ", msg);
 	if (pkt != NULL) {
-		fprintf(logFile, "source: %s:%s, dest: %s:%s, time: %llu, priority: %d, payld len: %lu\n",
-				"SRC_HOST", "SRC_PORT", // TODO: get from pkt
-				"DST_HOST", "DST_PORT", // TODO: get from pkt
+		fprintf(logFile,
+                "source: %s:%d, dest: %s:%d, time: %llu, priority: %d, payld len: %lu, type: %c\n",
+				inet_ntoa(*(struct in_addr *)&pkt->src_ip), // TODO: not working correctly, always 2.0.0.0
+                pkt->src_port,
+				inet_ntoa(*(struct in_addr *)&pkt->dst_ip), // TODO: not working correctly, always 2.0.0.0
+                pkt->dst_port,
 				timestamp,
-				1,         // TODO: pkt->priority,
-				pkt->len); // TODO: pkt payload length
+				(int)pkt->priority, // TODO: always reported as 0.... 
+				pkt->pkt.len,
+                pkt->pkt.type); // TODO for debug.. remove eventually
 	} else {
 		fprintf(logFile, "[]\n");
 	}
+
+    fflush(logFile);
 }
 
