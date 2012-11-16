@@ -27,7 +27,6 @@ int main(int argc, char **argv) {
         printf("-o <file option> -w <window>\n");
         exit(1);
     }
-
     char *portStr    = NULL;
     char *fileOption = NULL;
     char *emuHostStr = NULL;
@@ -69,7 +68,7 @@ int main(int argc, char **argv) {
     int requesterPort = atoi(portStr);
     int windowSize    = atoi(windowStr);
     // TODO: uncomment these once they are used
-    //int emuPort       = atoi(emuPortStr);
+    int emuPort       = atoi(emuPortStr);
 
     // Validate the argument values
     if (requesterPort <= 1024 || requesterPort >= 65536)
@@ -122,7 +121,6 @@ int main(int argc, char **argv) {
     }
     if (rp == NULL) perrorExit("Request socket creation failed");
     else            { printf("Requester socket: "); printNameInfo(rp); }
-
     // ------------------------------------------------------------------------
     // Emulator hints
     struct addrinfo ehints;
@@ -133,7 +131,6 @@ int main(int argc, char **argv) {
     
     FILE *file = fopen("recvd.txt", "at");
     if (file == NULL) perrorExit("File open error");
-    
     struct file_part *part = fileParts->parts;
     while (part != NULL) {
         // Convert the sender's port # to a string
@@ -164,35 +161,64 @@ int main(int argc, char **argv) {
             break;
         }
         if (ep == NULL) perrorExit("Emulator socket creation failed");
-        //else            printf("Emulator socket created.\n\n");
-        close(emusockfd); // don't need this socket, just created for getaddrinfo
+        else            close(emusockfd);
     
         // ------------------------------------------------------------------------
     
-        // Setup variables for statistics
+	struct addrinfo shints;
+	bzero(&shints, sizeof(struct addrinfo));
+	shints.ai_family   = AF_INET;
+	shints.ai_socktype = SOCK_DGRAM;
+	shints.ai_flags    = 0;
+       
+	int sendersockfd = 0;
+
+	// Setup variables for statistics
         unsigned long numPacketsRecvd = 0;
         unsigned long numBytesRecvd = 0;
         time_t startTime = time(NULL);
-    
+   
+   	char str[6];
+	sprintf(str, "%d", part->sender_port);
+	struct addrinfo *senderinfo;
+	errcode = getaddrinfo(part->sender_hostname, str, &shints, &senderinfo);
+	if (errcode != 0) {
+		fprintf(stderr, "emulator getaddrinfo %s\n", gai_strerror(errcode));
+		exit(EXIT_FAILURE);
+	}
+
+	struct addrinfo *sp;
+	for(sp = senderinfo; sp != NULL; sp = ep->ai_next){
+		sendersockfd = socket(sp->ai_family, sp->ai_socktype, sp->ai_protocol);
+		if (sendersockfd == -1){
+			perror("Socket error");
+			continue;
+		}
+
+		break;
+	}
+	if (sp == NULL) perrorExit("Sender socket creation failed");
+	else		close(sendersockfd);
         // ------------------------------------------------------------------------
         // Construct a REQUEST packet and send it to the emulator
         struct new_packet *pkt = NULL;
         pkt = malloc(sizeof(struct new_packet));
         bzero(pkt, sizeof(struct new_packet));
         pkt->priority = 1;
-        pkt->src_ip   = 0; // TODO
-        pkt->src_port = 0; // TODO
-        pkt->dst_ip   = 0; // TODO
-        pkt->dst_port = 0; // TODO
+        pkt->src_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr; // TODO
+        pkt->src_port = requesterPort; // TODO
+        pkt->dst_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr; // TODO
+        pkt->dst_port = part->sender_port; // TODO
         pkt->len      = sizeof(struct packet) - MAX_PAYLOAD + strlen(fileOption) + 1;
         // encapsulated packet
         pkt->pkt.type = 'R';
         pkt->pkt.seq  = 0;
         pkt->pkt.len  = windowSize; 
         strcpy(pkt->pkt.payload, fileOption);
-    
-        sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
-    
+   
+
+	sendNewPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
+
         free(pkt);
     
         // ------------------------------------------------------------------------
@@ -204,7 +230,7 @@ int main(int argc, char **argv) {
             (struct sockaddr *)&emuAddr, &emuLen);
         if (bytesRecvd != -1) {
             printf("<- [Received ACK]: ");
-            printPacketInfo(pkt, (struct sockaddr_storage *)&emuAddr);
+            printNewPacketInfo(pkt, (struct sockaddr_storage *)&emuAddr);
         } else {
             perrorExit("Recv failed.\n");
         }
@@ -230,7 +256,7 @@ int main(int argc, char **argv) {
             // Deserialize the message into a packet
             struct new_packet p;
             bzero(&p, sizeof(struct new_packet));
-            deserializePacket(&msg, &p);
+            deserializeNewPacket(&msg, &p);
     
             // Handle DATA packet
             if (p.pkt.type == 'D') {
@@ -248,7 +274,7 @@ int main(int argc, char **argv) {
     
                 // Print details about the received packet
                 printf("<- [Received DATA packet] ");
-                printPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
+                printNewPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
     
                 // Save the data so the file can be reassembled later
                 size_t bytesWritten = fprintf(file, "%s", p.pkt.payload);
@@ -295,4 +321,3 @@ int main(int argc, char **argv) {
     // All done!
     exit(EXIT_SUCCESS);
 }
-

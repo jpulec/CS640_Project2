@@ -9,7 +9,7 @@
 #include "utilities.h"
 
 
-void *serializePacket(struct new_packet *pkt) {
+void *serializeNewPacket(struct new_packet *pkt) {
     if (pkt == NULL) {
         fprintf(stderr, "Serialize: invalid new_packet\n");
         return NULL;
@@ -32,7 +32,7 @@ void *serializePacket(struct new_packet *pkt) {
     return spkt;
 }
 
-void deserializePacket(void *msg, struct new_packet *pkt) {
+void deserializeNewPacket(void *msg, struct new_packet *pkt) {
     if (msg == NULL) {
         fprintf(stderr, "Deserialize: invalid message\n");
         return;
@@ -55,8 +55,8 @@ void deserializePacket(void *msg, struct new_packet *pkt) {
     memcpy(pkt->pkt.payload, p->pkt.payload, MAX_PAYLOAD);
 }
 
-void sendPacketTo(int sockfd, struct new_packet *pkt, struct sockaddr *addr) {
-    struct new_packet *spkt = serializePacket(pkt);
+void sendNewPacketTo(int sockfd, struct new_packet *pkt, struct sockaddr *addr) {
+    struct new_packet *spkt = serializeNewPacket(pkt);
     size_t bytesSent = sendto(sockfd, spkt, NEW_PACKET_SIZE,
                               0, addr, sizeof(struct sockaddr));
 
@@ -72,11 +72,11 @@ void sendPacketTo(int sockfd, struct new_packet *pkt, struct sockaddr *addr) {
         else                       typeStr = "UNDEFINED";
 
         printf("-> [Sent %s new_packet] ", typeStr);
-        printPacketInfo(pkt, (struct sockaddr_storage *)addr);
+        printNewPacketInfo(pkt, (struct sockaddr_storage *)addr);
     }
 }
 
-void printPacketInfo(struct new_packet *pkt, struct sockaddr_storage *saddr) {
+void printNewPacketInfo(struct new_packet *pkt, struct sockaddr_storage *saddr) {
     if (pkt == NULL) {
         fprintf(stderr, "Unable to print info for null new_packet\n");
         return;

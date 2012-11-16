@@ -16,13 +16,13 @@ struct new_packet {
 
 #define NEW_PACKET_SIZE sizeof(struct new_packet)
 
-void *serializePacket(struct new_packet *pkt);
-void deserializePacket(void *msg, struct new_packet *pkt);
+void *serializeNewPacket(struct new_packet *pkt);
+void deserializeNewPacket(void *msg, struct new_packet *pkt);
 
-void sendPacketTo(int sockfd, struct new_packet *pkt, struct sockaddr *addr);
-void recvPacket(int sockfd, struct new_packet *pkt);
+void sendNewPacketTo(int sockfd, struct new_packet *pkt, struct sockaddr *addr);
+void recvNewPacket(int sockfd, struct new_packet *pkt);
 
-void printPacketInfo(struct new_packet *pkt, struct sockaddr_storage *saddr);
+void printNewPacketInfo(struct new_packet *pkt, struct sockaddr_storage *saddr);
 
 #endif
 

@@ -192,13 +192,13 @@ int main(int argc, char **argv) {
         // Deserialize the message into a packet 
         struct new_packet *pkt = malloc(sizeof(struct new_packet));
         bzero(pkt, sizeof(struct new_packet));
-        deserializePacket(msg, pkt);
+        deserializeNewPacket(msg, pkt);
 
         // Check for REQUEST packet
         if (pkt->pkt.type == 'R') {
             // Print some statistics for the recvd packet
             printf("<- [Received REQUEST]: ");
-            printPacketInfo(pkt, (struct sockaddr_storage *)rp->ai_addr);
+            printNewPacketInfo(pkt, (struct sockaddr_storage *)rp->ai_addr);
 
             // Set the window size
             windowSize = pkt->pkt.len;
@@ -246,7 +246,7 @@ int main(int argc, char **argv) {
             pkt->pkt.seq  = 0;
             pkt->pkt.len  = 0;
 
-            sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
+            sendNewPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
 
             printf("** [ Sent full window of packets ] **\n");
 
@@ -282,7 +282,7 @@ int main(int argc, char **argv) {
         memcpy(pkt->pkt.payload, buf, sizeof(buf));
 
         // Send the DATA packet to the requester 
-        sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
+        sendNewPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
 
         // Update packets sent counter for window size
         ++packetsSent;
