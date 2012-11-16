@@ -18,6 +18,24 @@
 #include "packet.h"
 
 
+struct packet_queue {
+    struct packet *pkt;
+    unsigned short retransmissions;
+    struct packet_queue *next;
+    struct packet_queue *prev;
+};
+struct packet_queue queue1, queue2, queue3;
+unsigned int q1num = 0, q2num = 0, q3num = 0;
+unsigned int MAX_QUEUE = 0;
+
+void enqueuePkt(struct packet *pkt);
+struct packet *dequeuePkt(struct packet_queue *q);
+
+
+FILE *logFile = NULL;
+void logOut(const char *reason, unsigned long long timestamp, struct packet *pkt);
+
+
 int main(int argc, char **argv) {
     // ------------------------------------------------------------------------
     // Handle commandline arguments
@@ -69,6 +87,15 @@ int main(int argc, char **argv) {
     if (queueSize < 1)
         ferrorExit("Invalid queue size");
     puts("");
+
+    MAX_QUEUE = queueSize;
+
+    // ------------------------------------------------------------------------
+    // Initialize logger
+    logFile = fopen(log, "wt");
+    if (logFile == NULL) perrorExit("File open error");
+    else                 printf("Opened file \"%s\" for logging.\n", log);
+    logOut("[LOG INITIALIZED]", getTimeMS(), NULL);
 
     // ------------------------------------------------------------------------
     // Setup emulator address info 
@@ -148,7 +175,6 @@ int main(int argc, char **argv) {
         break;
     }
     if (sp == NULL) perrorExit("Sender socket creation failed");
-    //else            printf("Sender socket created.\n");
     else            close(sendsockfd);
 
     //-------------------------------------------------------------------------
@@ -231,6 +257,8 @@ int main(int argc, char **argv) {
                         printPacketInfo(pkt, (struct sockaddr_storage *)&sendAddr);
 
                         // TODO: put pkt in queue and then forward according to routing table
+                        enqueuePkt(pkt);
+
                         printf("---> [Forwarding] :\n  ");
                         sendPacketTo(sockfd, pkt, (struct sockaddr *)&reqAddr);
                     } else if (pkt->type == 'E') {
@@ -238,6 +266,8 @@ int main(int argc, char **argv) {
                         printPacketInfo(pkt, (struct sockaddr_storage *)&sendAddr);
 
                         // TODO: put pkt in queue and then forward according to routing table
+                        enqueuePkt(pkt);
+
                         printf("---> [Forwarding] : ");
                         sendPacketTo(sockfd, pkt, (struct sockaddr *)&reqAddr);
 
@@ -420,6 +450,8 @@ int main(int argc, char **argv) {
     free(filename);
     */
 
+    // Close the logger
+    fclose(logFile);
 
     // Got what we came for, shut it down
     if (close(sockfd) == -1) perrorExit("Close error");
@@ -430,5 +462,79 @@ int main(int argc, char **argv) {
 
     // All done!
     exit(EXIT_SUCCESS);
+}
+
+
+void enqueuePkt(struct packet *pkt) {
+    // Validate the packet
+    if (pkt == NULL) {
+        logOut("Unable to enqueue NULL pkt", getTimeMS(), NULL);
+        return;
+    }
+
+    // Pick the appropriate queue
+    struct packet_queue *q = NULL, *queue = NULL;
+    switch (1) { // TODO: implement packet priority: pkt->priority) {
+        case 1: q = &queue1; break;
+        case 2: q = &queue2; break;
+        case 3: q = &queue3; break;
+        default:
+            logOut("Packet has invalid priority value", getTimeMS(), pkt);
+            return;
+    };
+
+    // Hack so that we can increment the right queue number after adding a pkt
+    queue = q;
+
+    // Check if the queue is already full
+    if (q == &queue1 && q1num >= MAX_QUEUE - 1) {
+        logOut("Priority queue 1 was full", getTimeMS(), pkt);
+        return;
+    } else if (q == &queue2 && q2num >= MAX_QUEUE - 1) {
+        logOut("Priority queue 2 was full", getTimeMS(), pkt);
+        return;
+    } else if (q == &queue3 && q3num >= MAX_QUEUE - 1) {
+        logOut("Priority queue 3 was full", getTimeMS(), pkt);
+        return;
+    }
+
+    // Move to end of queue
+    while (q->next != NULL) {
+        q = q->next;
+    }
+
+    // Add the packet to the end of the queue
+    q->next = malloc(sizeof(struct packet_queue));
+    q->next->pkt  = pkt;
+    q->next->retransmissions = 0;
+    q->next->next = NULL;
+    q->next->prev = q;
+
+    // Update the number of enqueued packets
+    if      (queue == &queue1) ++q1num;
+    else if (queue == &queue2) ++q2num;
+    else if (queue == &queue3) ++q3num;
+
+    // DEBUG
+    printf("Enqueued pkt: seq = %lu\n", pkt->seq);
+}
+
+struct packet *dequeuePkt(struct packet_queue *q) {
+    // TODO
+    return NULL;
+}
+
+void logOut(const char *msg, unsigned long long timestamp, struct packet *pkt) {
+    fprintf(logFile, "%s : ", msg);
+    if (pkt != NULL) {
+        fprintf(logFile, "source: %s:%s, dest: %s:%s, time: %llu, priority: %d, payld len: %lu\n",
+                "SRC_HOST", "SRC_PORT", // TODO: get from pkt
+                "DST_HOST", "DST_PORT", // TODO: get from pkt
+                timestamp,
+                1,         // TODO: pkt->priority,
+                pkt->len); // TODO: pkt payload length
+    } else {
+        fprintf(logFile, "[]\n");
+    }
 }
 
