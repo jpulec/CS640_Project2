@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
     // Convert program args to values
     int senderPort    = atoi(portStr);
     int requesterPort = atoi(reqPortStr);
-    int sequenceNum   = atoi(seqNumStr);
+    int sequenceNum   = 1; //atoi(seqNumStr);  // Note: Force initial seq=1 
     int payloadLen    = atoi(lenStr);
     unsigned sendRate = (unsigned) atoi(rateStr);
     int priority      = atoi(priorityStr);
@@ -264,7 +264,7 @@ int main(int argc, char **argv) {
         pkt->dst_port = 0; // TODO
         pkt->len      = 0; // TODO
         pkt->pkt.type = 'D';
-        pkt->pkt.seq  = sequenceNum;
+        pkt->pkt.seq  = sequenceNum++;
         pkt->pkt.len  = payloadLen;
 
         // Chunk the next batch of file data into this packet
@@ -278,9 +278,6 @@ int main(int argc, char **argv) {
 
         // Cleanup packets
         free(pkt);
-
-        // Update sequence number for next packet
-        sequenceNum += payloadLen;
     }
 
     // Cleanup the file
