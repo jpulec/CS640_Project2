@@ -15,11 +15,11 @@
 #include <netdb.h>
 
 #include "utilities.h"
-#include "packet.h"
+#include "newpacket.h"
 
 
 struct packet_queue {
-    struct packet *pkt;
+    struct new_packet *pkt;
     unsigned short retransmissions;
     struct packet_queue *next;
     struct packet_queue *prev;
@@ -28,12 +28,12 @@ struct packet_queue queue1, queue2, queue3;
 unsigned int q1num = 0, q2num = 0, q3num = 0;
 unsigned int MAX_QUEUE = 0;
 
-void enqueuePkt(struct packet *pkt);
-struct packet *dequeuePkt(struct packet_queue *q);
+void enqueuePkt(struct new_packet *pkt);
+struct new_packet *dequeuePkt(struct packet_queue *q);
 
 
 FILE *logFile = NULL;
-void logOut(const char *reason, unsigned long long timestamp, struct packet *pkt);
+void logOut(const char *reason, unsigned long long timestamp, struct new_packet *pkt);
 
 
 int main(int argc, char **argv) {
@@ -181,32 +181,30 @@ int main(int argc, char **argv) {
     // BEGIN NETWORK EMULATION LOOP
     puts("Emulator waiting for request packet...\n");
 
-    struct new_packet *curPkt = NULL;
+    //struct new_packet *curPkt = NULL;
     struct sockaddr_in reqAddr, sendAddr;
     socklen_t reqLen = sizeof(reqAddr);
-    socklen_t sendLen = sizeof(sendAddr);
 
-    int delay = 0;
+    //int delay = 0;
     int hasRequestPacket = 0;
 
-    unsigned long long prevMS = getTimeMS();
-    unsigned long long sendRate = 1;
+    //unsigned long long prevMS = getTimeMS();
 
     while (!hasRequestPacket) {
-        void *msg = malloc(sizeof(struct packet));
-        bzero(msg, sizeof(struct packet));
+        void *msg = malloc(sizeof(struct new_packet));
+        bzero(msg, sizeof(struct new_packet));
 
-        size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
+        size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct new_packet), 0,
             (struct sockaddr *)&reqAddr, &reqLen);
         if (bytesRecvd != -1) {
             printf("Received %d bytes\n", (int)bytesRecvd);
             
             // Deserialize the message into a packet 
-            struct packet *pkt = malloc(sizeof(struct packet));
-            bzero(pkt, sizeof(struct packet));
+            struct new_packet *pkt = malloc(sizeof(struct new_packet));
+            bzero(pkt, sizeof(struct new_packet));
             deserializePacket(msg, pkt);
 
-            if (pkt->type == 'R') {
+            if (pkt->pkt.type == 'R') {
                 hasRequestPacket = 1;
 
                 // Print some statistics for the recvd packet
@@ -215,12 +213,18 @@ int main(int argc, char **argv) {
             }
 
             // Send ACK packet back
-            struct packet *ack = malloc(sizeof(struct packet));
-            bzero(ack, sizeof(struct packet));
-            ack->type = 'A';
-            ack->seq  = 0;
-            ack->len  = pkt->len;
-            //strcpy(ack->payload, fileOption);
+            struct new_packet *ack = malloc(sizeof(struct new_packet));
+            bzero(ack, sizeof(struct new_packet));
+            ack->priority = 1;
+            ack->src_ip   = 0; // TODO
+            ack->src_port = 0; // TODO
+            ack->dst_ip   = 0; // TODO
+            ack->dst_port = 0; // TODO
+            ack->len      = 0; // TODO
+            ack->pkt.type = 'A';
+            ack->pkt.seq  = 0;
+            ack->pkt.len  = pkt->len;
+            //strcpy(ack->pkt.payload, fileOption);
         
             sendPacketTo(sockfd, ack, (struct sockaddr *)&reqAddr);
         
@@ -237,22 +241,22 @@ int main(int argc, char **argv) {
 
             int recvdEndPacket = 0;
             while (!recvdEndPacket) {
-                msg = malloc(sizeof(struct packet));
-                bzero(msg, sizeof(struct packet));
+                msg = malloc(sizeof(struct new_packet));
+                bzero(msg, sizeof(struct new_packet));
 
                 // Wait for a response 
-                size_t recvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
+                size_t recvd = recvfrom(sockfd, msg, sizeof(struct new_packet), 0,
                     (struct sockaddr *)sp->ai_addr, &sp->ai_addrlen);
                 if (recvd != -1) {
                     //printf("Received %d bytes\n", (int)recvd);
                     
                     // Deserialize the message into a packet 
                     free (pkt);
-                    pkt = malloc(sizeof(struct packet));
-                    bzero(pkt, sizeof(struct packet));
+                    pkt = malloc(sizeof(struct new_packet));
+                    bzero(pkt, sizeof(struct new_packet));
                     deserializePacket(msg, pkt);
 
-                    if (pkt->type == 'D') {
+                    if (pkt->pkt.type == 'D') {
                         printf("<- [Received DATA]: ");
                         printPacketInfo(pkt, (struct sockaddr_storage *)&sendAddr);
 
@@ -261,7 +265,7 @@ int main(int argc, char **argv) {
 
                         printf("---> [Forwarding] :\n  ");
                         sendPacketTo(sockfd, pkt, (struct sockaddr *)&reqAddr);
-                    } else if (pkt->type == 'E') {
+                    } else if (pkt->pkt.type == 'E') {
                         printf("<- [Received END]: ");
                         printPacketInfo(pkt, (struct sockaddr_storage *)&sendAddr);
 
@@ -293,163 +297,6 @@ int main(int argc, char **argv) {
         free(msg);
     }
 
-    
-    // -----------------------------===========================================
-    // REQUESTER ADDRESS INFO
-    /*struct addrinfo rhints;
-    bzero(&rhints, sizeof(struct addrinfo));
-    rhints.ai_family   = AF_INET;
-    rhints.ai_socktype = SOCK_DGRAM;
-    rhints.ai_flags    = 0;
-
-    struct addrinfo *requesterinfo;
-    errcode = getaddrinfo(NULL, reqPortStr, &rhints, &requesterinfo);
-    if (errcode != 0) {
-        fprintf(stderr, "requester getaddrinfo: %s\n", gai_strerror(errcode));
-        exit(EXIT_FAILURE);
-    }
-
-    // Loop through all the results of getaddrinfo and try to create a socket for requester
-    // NOTE: this is done so that we can find which of the getaddrinfo results is the requester
-    int requestsockfd;
-    struct addrinfo *rp;
-    for(rp = requesterinfo; rp != NULL; rp = rp->ai_next) {
-        requestsockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if (requestsockfd == -1) {
-            perror("Socket error");
-            continue;
-        }
-
-        break;
-    }
-    if (sp == NULL) perrorExit("Requester lookup failed to create socket");
-    //else            printf("Requester socket created.\n\n");
-    close(requestsockfd); // don't need this socket
-*/
-    // ------------------------------------------------------------------------
-    /*
-    puts("Sender waiting for request packet...\n");
-
-    // Receive and discard packets until a REQUEST packet arrives
-    //char *filename = NULL;
-    for (;;) {
-        void *msg = malloc(sizeof(struct packet));
-        bzero(msg, sizeof(struct packet));
-
-        // Receive a message
-        size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
-            (struct sockaddr *)rp->ai_addr, &rp->ai_addrlen);
-        if (bytesRecvd == -1) {
-            perror("Recvfrom error");
-            fprintf(stderr, "Failed/incomplete receive: ignoring\n");
-            continue;
-        }
-
-        // Deserialize the message into a packet 
-        struct packet *pkt = malloc(sizeof(struct packet));
-        bzero(pkt, sizeof(struct packet));
-        deserializePacket(msg, pkt);
-
-        // Check for REQUEST packet
-        if (pkt->type == 'R') {
-            // Print some statistics for the recvd packet
-            printf("<- [Received REQUEST]: ");
-            printPacketInfo(pkt, (struct sockaddr_storage *)rp->ai_addr);
-
-            // Grab a copy of the filename
-            filename = strdup(pkt->payload);
-
-            // Cleanup packets
-            free(pkt);
-            free(msg);
-            break;
-        }
-
-        // Cleanup packets
-        free(pkt);
-        * /
-        free(msg);
-    }
-    */
-
-    // ------------------------------------------------------------------------
-    // Got REQUEST packet, start sending DATA packets
-    // ------------------------------------------------------------------------
-    /*
-    // Open file for reading
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) perrorExit("File open error");
-    else              printf("Opened file \"%s\" for reading.\n", filename);
-
-    unsigned long long start = getTimeMS();
-    struct packet *pkt;
-    for (;;) {
-        // Is file part finished?
-        if (feof(file) != 0) {
-            // Create END packet and send it
-            pkt = malloc(sizeof(struct packet));
-            bzero(pkt, sizeof(struct packet));
-            pkt->type = 'E';
-            pkt->seq  = 0;
-            pkt->len  = 0;
-
-            //sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
-
-            free(pkt);
-            break;
-        }
-
-        // Send rate limiter
-        unsigned long long dt = getTimeMS() - start;
-        if (dt < 1000 / sendRate) {
-            continue; 
-        } else {
-            start = getTimeMS();
-        }
-        * /
-
-        // TODO 
-        unsigned long sequenceNum = 1;
-        unsigned long payloadLen  = 32;
-
-        // Create DATA packet
-        pkt = malloc(sizeof(struct packet));
-        bzero(pkt, sizeof(struct packet));
-        pkt->type = 'D';
-        pkt->seq  = sequenceNum;
-        pkt->len  = payloadLen;
-
-        // Chunk the next batch of file data into this packet
-        char buf[payloadLen];
-        bzero(buf, payloadLen);
-        fread(buf, 1, payloadLen, file); // TODO: check return value
-        memcpy(pkt->payload, buf, sizeof(buf));
-
-        printf("[Packet Details]\n------------------\n");
-        printf("type : %c\n", pkt->type);
-        printf("seq  : %lu\n", pkt->seq);
-        printf("len  : %lu\n", pkt->len);
-        printf("payload: %s\n\n", pkt->payload);
-        * /
-
-        // Send the DATA packet to the requester 
-        //sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
-
-        // Cleanup packets
-        free(pkt);
-
-        // Update sequence number for next packet
-        sequenceNum += payloadLen;
-    }
-    */
-
-    // Cleanup the file
-    /*
-    if (fclose(file) != 0) fprintf(stderr, "Failed to close file \"%s\"\n", filename);
-    else                   printf("File \"%s\" closed.\n", filename);
-    free(filename);
-    */
-
     // Close the logger
     fclose(logFile);
 
@@ -465,7 +312,7 @@ int main(int argc, char **argv) {
 }
 
 
-void enqueuePkt(struct packet *pkt) {
+void enqueuePkt(struct new_packet *pkt) {
     // Validate the packet
     if (pkt == NULL) {
         logOut("Unable to enqueue NULL pkt", getTimeMS(), NULL);
@@ -516,15 +363,15 @@ void enqueuePkt(struct packet *pkt) {
     else if (queue == &queue3) ++q3num;
 
     // DEBUG
-    printf("Enqueued pkt: seq = %lu\n", pkt->seq);
+    printf("Enqueued pkt: seq = %lu\n", pkt->pkt.seq);
 }
 
-struct packet *dequeuePkt(struct packet_queue *q) {
+struct new_packet *dequeuePkt(struct packet_queue *q) {
     // TODO
     return NULL;
 }
 
-void logOut(const char *msg, unsigned long long timestamp, struct packet *pkt) {
+void logOut(const char *msg, unsigned long long timestamp, struct new_packet *pkt) {
     fprintf(logFile, "%s : ", msg);
     if (pkt != NULL) {
         fprintf(logFile, "source: %s:%s, dest: %s:%s, time: %llu, priority: %d, payld len: %lu\n",
