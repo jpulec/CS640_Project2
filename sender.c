@@ -84,6 +84,7 @@ int main(int argc, char **argv) {
     int payloadLen    = atoi(lenStr);
     unsigned sendRate = (unsigned) atoi(rateStr);
     int priority      = atoi(priorityStr);
+    int windowSize    = 0; // Set from REQ pkt->pkt.len
     // TODO: uncomment these once they are used
     //int emuPort       = atoi(emuPortStr);
     //int timeout       = atoi(timeoutStr);
@@ -199,6 +200,9 @@ int main(int argc, char **argv) {
             printf("<- [Received REQUEST]: ");
             printPacketInfo(pkt, (struct sockaddr_storage *)rp->ai_addr);
 
+            // Set the window size
+            windowSize = pkt->pkt.len;
+
             // Grab a copy of the filename
             filename = strdup(pkt->pkt.payload);
 
@@ -223,10 +227,12 @@ int main(int argc, char **argv) {
     else              printf("Opened file \"%s\" for reading.\n", filename);
 
     unsigned long long start = getTimeMS();
+    unsigned int packetsSent = 0;
     struct new_packet *pkt;
     for (;;) {
-        // Is file part finished?
-        if (feof(file) != 0) {
+        // Is file part finished or a full window worth of pkts been sent?
+        // TODO: handle window properly by waiting for ACKs and retransmitting
+        if (feof(file) != 0 || packetsSent >= windowSize) {
             // Create END packet and send it
             pkt = malloc(sizeof(struct new_packet));
             bzero(pkt, sizeof(struct new_packet));
@@ -241,6 +247,8 @@ int main(int argc, char **argv) {
             pkt->pkt.len  = 0;
 
             sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
+
+            printf("** [ Sent full window of packets ] **\n");
 
             free(pkt);
             break;
@@ -275,6 +283,9 @@ int main(int argc, char **argv) {
 
         // Send the DATA packet to the requester 
         sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
+
+        // Update packets sent counter for window size
+        ++packetsSent;
 
         // Cleanup packets
         free(pkt);

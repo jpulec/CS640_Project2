@@ -67,13 +67,15 @@ int main(int argc, char **argv) {
 
     // Convert program args to values
     int requesterPort = atoi(portStr);
+    int windowSize    = atoi(windowStr);
     // TODO: uncomment these once they are used
     //int emuPort       = atoi(emuPortStr);
-    //int window        = atoi(windowStr);
 
     // Validate the argument values
     if (requesterPort <= 1024 || requesterPort >= 65536)
         ferrorExit("Invalid requester port");
+    if (windowSize <= 0 || windowSize >= 65536) // upper bound is arbitrary
+        ferrorExit("Invalid window size");
     puts("");
 
     // ------------------------------------------------------------------------
@@ -186,7 +188,7 @@ int main(int argc, char **argv) {
         // encapsulated packet
         pkt->pkt.type = 'R';
         pkt->pkt.seq  = 0;
-        pkt->pkt.len  = strlen(fileOption) + 1;
+        pkt->pkt.len  = windowSize; 
         strcpy(pkt->pkt.payload, fileOption);
     
         sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
