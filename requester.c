@@ -225,7 +225,15 @@ int main(int argc, char **argv) {
         // Connect to emulator to receive all parts of requested file
 
         // Start a recv loop here to get all packets for the given part
-        for (;;) {
+	//
+	
+	struct new_packet *buffer = malloc(windowSize * sizeof(struct new_packet)); 
+ 	unsigned int *acked = malloc(windowSize * sizeof(unsigned int));
+	int l;
+	for( l = 0; l < windowSize; ++l){
+		acked[l] = 0;
+	}
+	for (;;) {
             // Receive a message 
             struct new_packet msg;
             bzero(&msg, sizeof(struct new_packet));
@@ -255,15 +263,26 @@ int main(int argc, char **argv) {
                 // Print details about the received packet
                 printf("<- [Received DATA packet] ");
                 printPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
-    
-                // Save the data so the file can be reassembled later
-                size_t bytesWritten = fprintf(file, "%s", p.pkt.payload);
-                fflush(file);
-                if (bytesWritten == -1) {
-                    fprintf(stderr,
-                        "Incomplete file write: %d bytes written, %lu p len",
-                        (int)bytesWritten, p.pkt.len);
-                }
+    		
+		// See if this packet has already been received
+		int i;
+		int found = 0;
+		for(i = 0; i < windowSize; ++i){
+			if(buffer[i].pkt.seq == p.pkt.seq){
+				found = 1;
+			}
+		}
+		if(found == 0){
+			buffer[(p.pkt.seq - 1) % windowSize] = p;
+		}
+		// Save the data so the file can be reassembled later
+                //size_t bytesWritten = fprintf(file, "%s", p.pkt.payload);
+                //fflush(file);
+                //if (bytesWritten == -1) {
+                //    fprintf(stderr,
+                //        "Incomplete file write: %d bytes written, %lu p len",
+                //        (int)bytesWritten, p.pkt.len);
+                //}
 
 		// Requester now ACK's this packet
 		struct new_packet *ack = NULL;
@@ -282,9 +301,33 @@ int main(int argc, char **argv) {
 		strcpy(ack->pkt.payload, fileOption);
    
 
-		sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
-		free(pkt);
+		sendPacketTo(sockfd, ack, (struct sockaddr *)ep->ai_addr);
+		acked[(p.pkt.seq - 1) % windowSize] = 1;
+		free(ack);
             }
+	    int j;
+	    int doneAcking = 1;
+	    for(j = 0; j < windowSize; ++j){
+		if(acked[j] == 0){
+			doneAcking = 0;
+		}
+	    }
+	    if(doneAcking){
+		// write out to file in order
+		int k;
+		for(k = 0; k < windowSize; ++k){
+			acked[k] = 0;
+
+			size_t bytesWritten = fprintf(file, "%s", buffer[k].pkt.payload);
+			fflush(file);
+			if (bytesWritten == -1) {
+			    fprintf(stderr,
+			        "Incomplete file write: %d bytes written, %lu p len",
+			        (int)bytesWritten, buffer[k].pkt.len);
+			}
+		}
+	    }
+
     
             // Handle END packet
             if (p.pkt.type == 'E') {

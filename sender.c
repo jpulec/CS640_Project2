@@ -285,7 +285,8 @@ int main(int argc, char **argv) {
 	
 	unsigned int packetsSent = 0;
 	struct new_packet *buffer = malloc(windowSize*sizeof(struct new_packet));
-	unsigned long timeouts[windowSize];
+	unsigned long *timeouts = malloc(windowSize * sizeof(unsigned long));
+	unsigned int *ackCount = malloc(windowSize * sizeof(unsigned int));
 	while(packetsSent < windowSize){
 		// Send rate limiter
 		unsigned long long dt = getTimeMS() - start;
@@ -365,9 +366,16 @@ int main(int argc, char **argv) {
 		    	//printf("%lu\n", timeouts[i]); fflush(stdout);
 		    	acking = 1;
 			if (getTimeMS() - timeouts[i] > timeout){
-				// Retransmit pkt
-				sendPacketTo(sockfd, &buffer[i], (struct sockaddr*)ep->ai_addr);
-				timeouts[i] = getTimeMS();
+				if(ackCount[i] >= 5){
+					printf("Retransmitted 5 times. Giving up on packet with seqNo:%lu\n", buffer[i].pkt.seq);
+					timeouts[i] = 0;
+				}
+				else{
+					// Retransmit pkt
+					sendPacketTo(sockfd, &buffer[i], (struct sockaddr*)ep->ai_addr);
+					timeouts[i] = getTimeMS();
+					ackCount[i] += 1;
+				}
 			}
 		    }
 		}

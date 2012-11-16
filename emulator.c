@@ -405,7 +405,7 @@ struct new_packet *dequeuePkt(struct packet_node *q) {
 	// Update the number of enqueued packets
 	if (q->next != NULL){
 		if (q->next->pkt != NULL){
-			printf("Dequeued pkt: seq = \n");//%lu\n", q->pkt->pkt.seq);
+			printf("Dequeued pkt: seq = %lu\n", q->next->pkt->pkt.seq);
 		}
 		return q->next->pkt;
 	}
