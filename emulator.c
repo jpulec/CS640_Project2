@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
 	ehints.ai_socktype = SOCK_DGRAM;
 	ehints.ai_flags    = 0;
 
-	// Get the sender's address info
+	// Get the emulator's address info
 	struct addrinfo *emuinfo;
 	int errcode = getaddrinfo(NULL, portStr, &ehints, &emuinfo);
 	
@@ -120,12 +120,12 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 
-	// Loop through all the results of getaddrinfo and try to create a socket for sender
+	// Loop through all the results of getaddrinfo and try to create a socket for emulator
 	int sockfd;
 	struct addrinfo *ep;
 	for(ep = emuinfo; ep != NULL; ep = ep->ai_next) {
 		// Try to create a new socket
-		sockfd = socket(ep->ai_family, ep->ai_socktype, ep->ai_protocol);
+		sockfd = socket(ep->ai_family, ep->ai_socktype | SOCK_NONBLOCK, ep->ai_protocol);
 		if (sockfd == -1) {
 			perror("Socket error");
 			continue;
@@ -141,15 +141,14 @@ int main(int argc, char **argv) {
 		break;
 	}
 	if (ep == NULL) perrorExit("Emulator socket creation failed");
-	else            close(sockfd);
 
 	//-------------------------------------------------------------------------
 	// BEGIN NETWORK EMULATION LOOP
 	puts("Emulator waiting for packets...\n");
 
 	struct new_packet *delayedPkt = NULL;
-	struct sockaddr_in emuAddr, nextAddr;
-	socklen_t emuLen = sizeof(emuAddr);
+	struct sockaddr_in recvAddr, nextAddr;
+	socklen_t recvLen = sizeof(recvAddr);
 	//socklen_t sendLen = sizeof(sendAddr);
 
 	head = parseTable(filename, getenv("HOSTNAME"), port);
@@ -159,10 +158,9 @@ int main(int argc, char **argv) {
 	while (1) {
 		void *msg = malloc(sizeof(struct new_packet));
 		bzero(msg, sizeof(struct new_packet));
-
+		
 		size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct new_packet), 0,
-				(struct sockaddr *)&emuAddr, &emuLen);
-
+				(struct sockaddr *)&recvAddr, &recvLen);
 		struct forward_entry *curEntry;
 		if (bytesRecvd != -1) {
 			printf("Received %d bytes\n", (int)bytesRecvd);

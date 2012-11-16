@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
     int requesterPort = atoi(portStr);
     int windowSize    = atoi(windowStr);
     // TODO: uncomment these once they are used
-    int emuPort       = atoi(emuPortStr);
+    //int emuPort       = atoi(emuPortStr);
 
     // Validate the argument values
     if (requesterPort <= 1024 || requesterPort >= 65536)
