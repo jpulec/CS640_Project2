@@ -261,8 +261,8 @@ int main(int argc, char **argv) {
                 */
     
                 // Print details about the received packet
-                printf("<- [Received DATA packet] ");
-                printPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
+                //printf("<- [Received DATA packet] ");
+                //printPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
     		
 		// See if this packet has already been received
 		int i;
