@@ -45,9 +45,8 @@ struct forward_entry *parseTable(const char *filename, const char *emu_hostname,
             tokens[n++] = tok;
             tok  = strtok(NULL, " ");
         }
-	
 	if( strcmp(tokens[EMU_HOSTNAME], emu_hostname) == 0 && 
-	    *tokens[EMU_PORT] == emu_port){
+	    atoi(tokens[EMU_PORT]) == emu_port){
 	    curEntry->emu_hostname  = strdup(tokens[EMU_HOSTNAME]);
 	    curEntry->emu_port      = atoi(tokens[EMU_PORT]);
 	    curEntry->dst_hostname  = strdup(tokens[DST_HOSTNAME]);

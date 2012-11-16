@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     }
     char *portStr    = NULL;
     char *fileOption = NULL;
-    char *emuHostStr = NULL;
+    char *emuHost    = NULL;
     char *emuPortStr = NULL;
     char *windowStr  = NULL;
 
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
         switch(cmd) {
             case 'p': portStr    = optarg; break;
             case 'o': fileOption = optarg; break;
-            case 'f': emuHostStr = optarg; break;
+            case 'f': emuHost    = optarg; break;
             case 'h': emuPortStr = optarg; break;
             case 'w': windowStr  = optarg; break;
             case '?':
@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
     // DEBUG
     printf("Port: %s\n", portStr);
     printf("File: %s\n", fileOption);
-    printf("Emu Name: %s\n", emuHostStr);
+    printf("Emu Name: %s\n", emuHost);
     printf("Emu Port: %s\n", emuPortStr);
     printf("Window: %s\n", windowStr);
 
@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
 
         // Setup emulator address info
         struct addrinfo *emuinfo;
-        errcode = getaddrinfo(emuHostStr, emuPortStr, &ehints, &emuinfo);
+        errcode = getaddrinfo(emuHost, emuPortStr, &ehints, &emuinfo);
         if (errcode != 0) {
             fprintf(stderr, "emulator getaddrinfo: %s\n", gai_strerror(errcode));
             exit(EXIT_FAILURE);
@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
         pkt->priority = 1;
         pkt->src_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr; // TODO
         pkt->src_port = requesterPort; // TODO
-        pkt->dst_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr; // TODO
+        pkt->dst_ip   = ((struct sockaddr_in*)sp)->sin_addr.s_addr; // TODO
         pkt->dst_port = part->sender_port; // TODO
         pkt->len      = sizeof(struct packet) - MAX_PAYLOAD + strlen(fileOption) + 1;
         // encapsulated packet
@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
    
 
 	sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
-
+	printf("Pkt sent"); fflush(stdout);
         free(pkt);
     
         // ------------------------------------------------------------------------

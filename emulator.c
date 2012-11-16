@@ -10,6 +10,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/utsname.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -19,21 +20,22 @@
 #include "table.h"
 
 
-struct packet_queue {
+struct packet_node {
 	struct new_packet *pkt;
-	unsigned short retransmissions;
-	struct packet_queue *next;
-	struct packet_queue *prev;
+	struct packet_node *next;
 };
 
 struct forward_entry *head;
 
-struct packet_queue queue1, queue2, queue3;
+struct packet_node *queue1h, *queue2h, *queue3h,
+		   *queue1t, *queue2t, *queue3t;
+
+
 unsigned int q1num = 0, q2num = 0, q3num = 0;
 unsigned int MAX_QUEUE = 0;
 
 void enqueuePkt(struct new_packet *pkt);
-struct new_packet *dequeuePkt(struct packet_queue *q);
+struct new_packet *dequeuePkt(struct packet_node *q);
 
 
 FILE *logFile = NULL;
@@ -48,6 +50,15 @@ int main(int argc, char **argv) {
 		printf("-f <filename> -l <log>\n");
 		exit(1);
 	}
+
+	queue1h = malloc(sizeof(struct packet_node));
+	queue2h = malloc(sizeof(struct packet_node));
+	queue3h = malloc(sizeof(struct packet_node));
+
+	queue1t = queue1h;
+	queue2t = queue2h;
+	queue3t = queue3h;
+
 
 	char *portStr     = NULL;
 	char *queueSizeStr= NULL;
@@ -110,60 +121,58 @@ int main(int argc, char **argv) {
 	ehints.ai_socktype = SOCK_DGRAM;
 	ehints.ai_flags    = 0;
 
-	// Get the emulator's address info
-	struct addrinfo *emuinfo;
-	int errcode = getaddrinfo(NULL, portStr, &ehints, &emuinfo);
-	
-	if (errcode != 0) {
-		fprintf(stderr, "emulator getaddrinfo: %s\n", gai_strerror(errcode));
-		exit(EXIT_FAILURE);
-	}
+	// Setup emu sending socket
+	struct sockaddr_in emuaddr;
 
-	// Loop through all the results of getaddrinfo and try to create a socket for emulator
 	int sockfd;
-	struct addrinfo *ep;
-	for(ep = emuinfo; ep != NULL; ep = ep->ai_next) {
-		// Try to create a new socket
-		sockfd = socket(ep->ai_family, ep->ai_socktype | SOCK_NONBLOCK, ep->ai_protocol);
-		if (sockfd == -1) {
-			perror("Socket error");
-			continue;
-		}
 
-		// Try to bind the socket
-		if (bind(sockfd, ep->ai_addr, ep->ai_addrlen) == -1) {
-			perror("Bind error");
-			close(sockfd);
-			continue;
-		}
-
-		break;
+	if( (sockfd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0)) == -1){
+		perrorExit("Socket error");
 	}
-	if (ep == NULL) perrorExit("Emulator socket creation failed");
 
+	emuaddr.sin_family = AF_INET;
+	emuaddr.sin_port = htons(port);
+	emuaddr.sin_addr.s_addr = INADDR_ANY;
+	bzero(&(emuaddr.sin_zero), 8);
+
+	
+	if (bind(sockfd, (struct sockaddr*)&emuaddr, sizeof(emuaddr)) == -1) {
+		close(sockfd);
+		perrorExit("Bind error");
+	}
+
+	printf("Emulator socket created on port:%d\n", port );
+	
 	//-------------------------------------------------------------------------
 	// BEGIN NETWORK EMULATION LOOP
 	puts("Emulator waiting for packets...\n");
 
 	struct new_packet *delayedPkt = NULL;
-	struct sockaddr_in recvAddr, nextAddr;
+	struct sockaddr_in recvAddr;
+	struct addrinfo nextAddr, *np;
+
 	socklen_t recvLen = sizeof(recvAddr);
 	//socklen_t sendLen = sizeof(sendAddr);
-
-	head = parseTable(filename, getenv("HOSTNAME"), port);
+	// HACK: Don't like hard coding this, but don't know any other way
+	size_t MAX_HOST_LEN = 256;
+	char name[MAX_HOST_LEN];
+	gethostname(name, MAX_HOST_LEN);
+	//Need to just get lowest level dns name i.e. mumble-30
+	char *pch;
+	pch = strtok(name, ".");
+	head = parseTable(filename, pch, port);
 
 	unsigned long long prevMS = getTimeMS();
 
 	while (1) {
 		void *msg = malloc(sizeof(struct new_packet));
 		bzero(msg, sizeof(struct new_packet));
-		
-		size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct new_packet), 0,
-				(struct sockaddr *)&recvAddr, &recvLen);
+		size_t bytesRecvd;
+		bytesRecvd = recvfrom(sockfd, msg, sizeof(struct new_packet), 0,
+				    (struct sockaddr *)&recvAddr, &recvLen);
 		struct forward_entry *curEntry;
 		if (bytesRecvd != -1) {
 			printf("Received %d bytes\n", (int)bytesRecvd);
-
 			// Deserialize the message into a packet 
 			struct new_packet *pkt = malloc(sizeof(struct new_packet));
 			bzero(pkt, sizeof(struct new_packet));
@@ -178,7 +187,7 @@ int main(int argc, char **argv) {
 
 
 			curEntry = head;
-			int curEntryIP = 0;
+			unsigned long curEntryIP = 0;
 
 			struct addrinfo entryHints;
 			bzero(&entryHints, sizeof(struct addrinfo));
@@ -187,7 +196,9 @@ int main(int argc, char **argv) {
 			entryHints.ai_flags    = 0;
 
 			struct addrinfo *entryInfo;
-			errcode = getaddrinfo(curEntry->dst_hostname, NULL, &entryHints, &entryInfo);
+			int dstsockfd = 0;
+			int errcode = getaddrinfo(curEntry->dst_hostname, NULL, &entryHints, &entryInfo);
+			
 			if( errcode != 0 ){
 				fprintf(stderr, "cannot resolve hostname:%s", curEntry->dst_hostname);
 				fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
@@ -195,53 +206,113 @@ int main(int argc, char **argv) {
 				continue;
 			}
 			struct addrinfo *ep;
-			while(ep == NULL){
-				ep = ep->ai_next;
-			}
-			if( ep == NULL){
-				fprintf(stderr, "cannot resolve hostname:%s", curEntry->dst_hostname);
-				fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
-			}
-			else 		{ printf("Emulator socket: "); printNameInfo(ep); }
+			for(ep = entryInfo; ep != NULL; ep = ep->ai_next){
+				dstsockfd = socket(ep->ai_family, ep->ai_socktype, ep->ai_protocol);
+				if ( dstsockfd == -1){
+					perror("Socket error");
+					continue;
+				}
 
-			while ( curEntryIP != pkt->dst_ip || curEntry->dst_port != pkt->dst_port){
+				if ( bind(dstsockfd, ep->ai_addr, ep->ai_addrlen) == -1){
+					perror("Bind error");
+					close(dstsockfd);
+					continue;
+				}
+				break;
+			}
+			if (ep == NULL){ 
+				printf("Error: cannot resolve hostname:%s", curEntry->dst_hostname);
+				continue;
+			}
+			else{
+				close(dstsockfd);
+			}
+
+			curEntryIP = ((struct sockaddr_in*)ep)->sin_addr.s_addr;
+			
+			while ( curEntry != NULL && (curEntryIP != pkt->dst_ip || curEntry->dst_port != pkt->dst_port)){
 				curEntry = curEntry->next;
 			}
+			
 			if(curEntry == NULL){
 				printf("Error: no forwarding info for destination:%lu on port:%hu", pkt->dst_ip, pkt->dst_port);
-				fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
+				fprintf(logFile, "PACKET DROPPED\nDST_IP:%d", pkt->dst_ip);
 				free(pkt);
 				continue;
 			}
+			
+			struct addrinfo nextHints;
+			bzero(&nextHints, sizeof(struct addrinfo));
+			nextHints.ai_family   = AF_INET;
+			nextHints.ai_socktype = SOCK_DGRAM;
+			nextHints.ai_flags    = 0;
+			
+			struct addrinfo *nextInfo;
+			
+			int nextsockfd = 0;
+			char str[6];
+			sprintf(str, "%d", curEntry->next_port);
+			errcode = getaddrinfo(curEntry->next_hostname, str, &nextHints, &nextInfo);
+			
+			if( errcode != 0 ){
+				fprintf(stderr, "cannot resolve hostname:%s", curEntry->next_hostname);
+				fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->next_hostname);
+				free(pkt);
+				continue;
+			}
+			for(np = nextInfo; np != NULL; np = np->ai_next){
+				nextsockfd = socket(np->ai_family, np->ai_socktype, np->ai_protocol);
+				if ( nextsockfd == -1){
+					perror("Socket error");
+					continue;
+				}
+
+				break;
+			}
+
+			if (np == NULL){ 
+				printf("Error: cannot resolve hostname:%s", curEntry->next_hostname);
+				continue;
+			}
+			else{
+				close(nextsockfd);
+			}
 
 			// By this point, pkt must be forwarded
-			free(pkt);
 			enqueuePkt(pkt);
 		}
 		else if(delayedPkt != NULL){
 			// If pkt delay is greater than elapsed time
-			if( prevMS - getTimeMS() > curEntry->delay){
+			if( getTimeMS() - prevMS < curEntry->delay){
 				continue;
 			}
 			else{
 				// Determine whether or not to drop pkt
-				int r = ( 100 * rand() / ( RAND_MAX + 1.0));
+				int r = ( 100.0 * rand() / ( RAND_MAX + 1.0));
 				if(r <= curEntry->loss){
 					fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
 				}
 				else{
-					sendPacketTo(sockfd, delayedPkt, (struct sockaddr*)&nextAddr);
+					printf("sending pkt"); fflush(stdout);
+					sendPacketTo(sockfd, delayedPkt, (struct sockaddr *)np->ai_addr);
 				}
+				delayedPkt = NULL;
 			}	
 		}
 		else{
-			if ((delayedPkt = dequeuePkt(&queue1)) != NULL){
+			if ((delayedPkt = dequeuePkt(queue1h)) != NULL){
+				queue1h = queue1h->next;
+				--q1num;
 				prevMS = getTimeMS();
 			}
-			else if((delayedPkt = dequeuePkt(&queue2)) != NULL){
+			else if((delayedPkt = dequeuePkt(queue2h)) != NULL){
+				queue2h = queue2h->next;
+				--q2num;
 				prevMS = getTimeMS();
 			}
-			else if((delayedPkt = dequeuePkt(&queue3)) != NULL){
+			else if((delayedPkt = dequeuePkt(queue3h)) != NULL){
+				queue3h = queue3h->next;
+				--q3num;
 				prevMS = getTimeMS();
 			}
 		}
@@ -280,13 +351,22 @@ void enqueuePkt(struct new_packet *pkt) {
 		logOut("Unable to enqueue NULL pkt", getTimeMS(), NULL);
 		return;
 	}
-
+	
 	// Pick the appropriate queue
-	struct packet_queue *q = NULL, *queue = NULL;
-	switch (pkt->priority) { // TODO: implement packet priority: pkt->priority) {
-		case 1: q = &queue1; break;
-		case 2: q = &queue2; break;
-		case 3: q = &queue3; break;
+	struct packet_node *q = NULL, *queue = NULL;
+	switch (1) { // TODO: implement packet priority: pkt->priority) {
+		case 1: q = queue1t; 
+			q->next = malloc(sizeof(struct packet_node));
+			queue1t = q->next;
+			break;
+		case 2: q = queue2t; 
+			q->next = malloc(sizeof(struct packet_node));
+			queue2t = q->next;
+			break;
+		case 3: q = queue3t; 
+			q->next = malloc(sizeof(struct packet_node));
+			queue3t = q->next;
+			break;
 		default:
 			logOut("Packet has invalid priority value", getTimeMS(), pkt);
 			return;
@@ -296,41 +376,41 @@ void enqueuePkt(struct new_packet *pkt) {
 	queue = q;
 
 	// Check if the queue is already full
-	if (q == &queue1 && q1num >= MAX_QUEUE - 1) {
+	if (q == queue1t && q1num >= MAX_QUEUE - 1) {
 		logOut("Priority queue 1 was full", getTimeMS(), pkt);
 		return;
-	} else if (q == &queue2 && q2num >= MAX_QUEUE - 1) {
+	} else if (q == queue2t && q2num >= MAX_QUEUE - 1) {
 		logOut("Priority queue 2 was full", getTimeMS(), pkt);
 		return;
-	} else if (q == &queue3 && q3num >= MAX_QUEUE - 1) {
+	} else if (q == queue3t && q3num >= MAX_QUEUE - 1) {
 		logOut("Priority queue 3 was full", getTimeMS(), pkt);
 		return;
 	}
 
-	// Move to end of queue
-	while (q->next != NULL) {
-		q = q->next;
-	}
-
 	// Add the packet to the end of the queue
-	q->next = malloc(sizeof(struct packet_queue));
 	q->next->pkt  = pkt;
-	q->next->retransmissions = 0;
 	q->next->next = NULL;
-	q->next->prev = q;
+	q = q->next;
 
 	// Update the number of enqueued packets
-	if      (queue == &queue1) ++q1num;
-	else if (queue == &queue2) ++q2num;
-	else if (queue == &queue3) ++q3num;
+	if      (queue == queue1t) ++q1num;
+	else if (queue == queue2t) ++q2num;
+	else if (queue == queue3t) ++q3num;
 
 	// DEBUG
 	printf("Enqueued pkt: seq = %lu\n", pkt->pkt.seq);
 }
 
-struct new_packet *dequeuePkt(struct packet_queue *q) {
-	// TODO
-	return NULL;
+struct new_packet *dequeuePkt(struct packet_node *q) {
+
+	// Update the number of enqueued packets
+	if (q->next != NULL){
+		printf("dequeue"); fflush(stdout);
+		if (q->next->pkt != NULL){
+			printf("Dequeued pkt: seq = \n");//%lu\n", q->pkt->pkt.seq);
+		}
+		return q->next->pkt;
+	}
 }
 
 void logOut(const char *msg, unsigned long long timestamp, struct new_packet *pkt) {

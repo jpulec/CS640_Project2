@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
     char *rateStr    = NULL;
     char *seqNumStr  = NULL;
     char *lenStr     = NULL;
-    char *emu        = NULL;
+    char *emuHost    = NULL;
     char *emuPortStr = NULL;
     char *priorityStr= NULL;
     char *timeoutStr = NULL;
@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
             case 'r': rateStr    = optarg; break;
             case 'q': seqNumStr  = optarg; break;
             case 'l': lenStr     = optarg; break;
-            case 'f': emu        = optarg; break;
+            case 'f': emuHost    = optarg; break;
             case 'h': emuPortStr = optarg; break;
             case 'i': priorityStr= optarg; break;
             case 't': timeoutStr = optarg; break;
@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     printf("Rate           : %s\n", rateStr);
     printf("Sequence #     : %s\n", seqNumStr);
     printf("Length         : %s\n", lenStr);
-    printf("Emu Name       : %s\n", emu);
+    printf("Emu Name       : %s\n", emuHost);
     printf("Emu Port       : %s\n", emuPortStr);
     printf("Priority       : %s\n", priorityStr);
     printf("Timeout        : %s\n", timeoutStr);
@@ -167,13 +167,45 @@ int main(int argc, char **argv) {
 
         break;
     }
-    if (sp == NULL) perrorExit("Requester lookup failed to create socket");
+    if (rp == NULL) perrorExit("Requester lookup failed to create socket");
     //else            printf("Requester socket created.\n\n");
     close(requestsockfd); // don't need this socket
 
     // ------------------------------------------------------------------------
     puts("Sender waiting for request packet...\n");
 
+    
+    // Emu information
+    struct addrinfo ehints;
+    bzero(&ehints, sizeof(struct addrinfo));
+    ehints.ai_family   = AF_INET;
+    ehints.ai_socktype = SOCK_DGRAM;
+    ehints.ai_flags    = 0;
+    
+
+    // Setup emulator address info
+    struct addrinfo *emuinfo;
+    errcode = getaddrinfo(emuHost, emuPortStr, &ehints, &emuinfo);
+    if (errcode != 0) {
+        fprintf(stderr, "emulator getaddrinfo: %s\n", gai_strerror(errcode));
+        exit(EXIT_FAILURE);
+    }
+
+    // Loop through all the results of getaddrinfo and try to create a socket for emulator
+    // NOTE: this is done so that we can find which of the getaddrinfo results is the emulator 
+    int emusockfd;
+    struct addrinfo *ep;
+    for(ep = emuinfo; ep != NULL; ep = ep->ai_next) {
+        emusockfd = socket(ep->ai_family, ep->ai_socktype, ep->ai_protocol);
+        if (emusockfd == -1) {
+	    perror("Socket error");
+	    continue;
+        }
+
+        break;
+    }
+    if (ep == NULL) perrorExit("Emulator socket creation failed");
+    else            close(emusockfd);
     // Receive and discard packets until a REQUEST packet arrives
     char *filename = NULL;
     for (;;) {
@@ -237,16 +269,16 @@ int main(int argc, char **argv) {
             pkt = malloc(sizeof(struct new_packet));
             bzero(pkt, sizeof(struct new_packet));
             pkt->priority = priority;
-            pkt->src_ip   = 0; // TODO
-            pkt->src_port = 0; // TODO
-            pkt->dst_ip   = 0; // TODO
-            pkt->dst_port = 0; // TODO
+            pkt->src_ip   = ((struct sockaddr_in*)sp)->sin_addr.s_addr ; // TODO
+            pkt->src_port = senderPort; // TODO
+            pkt->dst_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr ; // TODO
+            pkt->dst_port = requesterPort; // TODO
             pkt->len      = 0; // TODO
             pkt->pkt.type = 'E';
             pkt->pkt.seq  = 0;
             pkt->pkt.len  = 0;
 
-            sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
+            sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
 
             printf("** [ Sent full window of packets ] **\n");
 
@@ -266,10 +298,10 @@ int main(int argc, char **argv) {
         pkt = malloc(sizeof(struct new_packet));
         bzero(pkt, sizeof(struct new_packet));
         pkt->priority = priority;
-        pkt->src_ip   = 0; // TODO
-        pkt->src_port = 0; // TODO
-        pkt->dst_ip   = 0; // TODO
-        pkt->dst_port = 0; // TODO
+        pkt->src_ip   = ((struct sockaddr_in*)sp)->sin_addr.s_addr ; // TODO
+        pkt->src_port = senderPort; // TODO
+        pkt->dst_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr ; // TODO
+        pkt->dst_port = requesterPort; // TODO
         pkt->len      = 0; // TODO
         pkt->pkt.type = 'D';
         pkt->pkt.seq  = sequenceNum++;
@@ -282,7 +314,7 @@ int main(int argc, char **argv) {
         memcpy(pkt->pkt.payload, buf, sizeof(buf));
 
         // Send the DATA packet to the requester 
-        sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
+        sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
 
         // Update packets sent counter for window size
         ++packetsSent;
