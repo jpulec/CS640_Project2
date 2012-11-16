@@ -8,7 +8,7 @@
 #include "packet.h"
 #include "utilities.h"
 
-
+/*
 void *serializePacket(struct packet *pkt) {
     if (pkt == NULL) {
         fprintf(stderr, "Serialize: invalid packet\n");
@@ -90,13 +90,14 @@ void printPacketInfo(struct packet *pkt, struct sockaddr_storage *saddr) {
 
     printf("@%llu ms : ip %s:%u : seq %lu : len %lu : pld \"%s\"\n",
         getTimeMS(), ipstr, ipport, pkt->seq, pkt->len, pl_bytes);
-    /*
+    / *
     printf("  Packet from %s:%u (%lu payload bytes):\n",ipstr,ipport,pkt->len);
     printf("    type = %c\n", pkt->type);
     printf("    seq  = %lu\n", pkt->seq);
     printf("    len  = %lu\n", pkt->len);
     printf("    data = %s\n", pkt->payload);
     puts("");
-    */
+    * /
 }
+*/
 

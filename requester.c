@@ -16,7 +16,7 @@
 
 #include "utilities.h"
 #include "tracker.h"
-#include "packet.h"
+#include "newpacket.h"
 
 
 int main(int argc, char **argv) {
@@ -67,8 +67,9 @@ int main(int argc, char **argv) {
 
     // Convert program args to values
     int requesterPort = atoi(portStr);
-    int emuPort       = atoi(emuPortStr);
-    int window        = atoi(windowStr);
+    // TODO: uncomment these once they are used
+    //int emuPort       = atoi(emuPortStr);
+    //int window        = atoi(windowStr);
 
     // Validate the argument values
     if (requesterPort <= 1024 || requesterPort >= 65536)
@@ -173,14 +174,20 @@ int main(int argc, char **argv) {
     
         // ------------------------------------------------------------------------
         // Construct a REQUEST packet and send it to the emulator
-        // TODO: get emulator host:port from tracker?
-        struct packet *pkt = NULL;
-        pkt = malloc(sizeof(struct packet));
-        bzero(pkt, sizeof(struct packet));
-        pkt->type = 'R';
-        pkt->seq  = 0;
-        pkt->len  = strlen(fileOption) + 1;
-        strcpy(pkt->payload, fileOption);
+        struct new_packet *pkt = NULL;
+        pkt = malloc(sizeof(struct new_packet));
+        bzero(pkt, sizeof(struct new_packet));
+        pkt->priority = 1;
+        pkt->src_ip   = 0; // TODO
+        pkt->src_port = 0; // TODO
+        pkt->dst_ip   = 0; // TODO
+        pkt->dst_port = 0; // TODO
+        pkt->len      = sizeof(struct packet) - MAX_PAYLOAD + strlen(fileOption) + 1;
+        // encapsulated packet
+        pkt->pkt.type = 'R';
+        pkt->pkt.seq  = 0;
+        pkt->pkt.len  = strlen(fileOption) + 1;
+        strcpy(pkt->pkt.payload, fileOption);
     
         sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
     
@@ -191,7 +198,7 @@ int main(int argc, char **argv) {
         // TODO: this is temporary
         struct sockaddr_in emuAddr;
         socklen_t emuLen = sizeof(emuAddr);
-        int bytesRecvd = recvfrom(sockfd, pkt, sizeof(struct packet), 0,
+        int bytesRecvd = recvfrom(sockfd, pkt, sizeof(struct new_packet), 0,
             (struct sockaddr *)&emuAddr, &emuLen);
         if (bytesRecvd != -1) {
             printf("<- [Received ACK]: ");
@@ -212,19 +219,19 @@ int main(int argc, char **argv) {
         // Start a recv loop here to get all packets for the given part
         for (;;) {
             // Receive a message 
-            struct packet msg;
-            bzero(&msg, sizeof(struct packet));
-            size_t bytesRecvd = recvfrom(sockfd, &msg, sizeof(struct packet), 0,
+            struct new_packet msg;
+            bzero(&msg, sizeof(struct new_packet));
+            size_t bytesRecvd = recvfrom(sockfd, &msg, sizeof(struct new_packet), 0,
                 (struct sockaddr *)ep->ai_addr, &ep->ai_addrlen);
             if (bytesRecvd == -1) perrorExit("Receive error");
     
             // Deserialize the message into a packet
-            struct packet p;
-            bzero(&p, sizeof(struct packet));
+            struct new_packet p;
+            bzero(&p, sizeof(struct new_packet));
             deserializePacket(&msg, &p);
     
             // Handle DATA packet
-            if (p.type == 'D') {
+            if (p.pkt.type == 'D') {
                 // Update statistics
                 ++numPacketsRecvd;
                 numBytesRecvd += p.len;
@@ -242,21 +249,17 @@ int main(int argc, char **argv) {
                 printPacketInfo(&p, (struct sockaddr_storage *)ep->ai_addr);
     
                 // Save the data so the file can be reassembled later
-                size_t bytesWritten = fprintf(file, "%s", p.payload);
+                size_t bytesWritten = fprintf(file, "%s", p.pkt.payload);
                 fflush(file);
-                /*
-                if (bytesWritten != p.len) {
+                if (bytesWritten == -1) {
                     fprintf(stderr,
                         "Incomplete file write: %d bytes written, %lu p len",
-                        (int)bytesWritten, p.len);
-                } else {
-                    fflush(file);
+                        (int)bytesWritten, p.pkt.len);
                 }
-                */
             }
     
             // Handle END packet
-            if (p.type == 'E') {
+            if (p.pkt.type == 'E') {
                 printf("<- *** [Received END packet] ***");
                 double dt = difftime(time(NULL), startTime);
                 if (dt <= 1) dt = 1;

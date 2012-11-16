@@ -15,7 +15,7 @@
 #include <netdb.h>
 
 #include "utilities.h"
-#include "packet.h"
+#include "newpacket.h"
 
 
 int main(int argc, char **argv) {
@@ -83,9 +83,10 @@ int main(int argc, char **argv) {
     int sequenceNum   = atoi(seqNumStr);
     int payloadLen    = atoi(lenStr);
     unsigned sendRate = (unsigned) atoi(rateStr);
-    int emuPort       = atoi(emuPortStr);
     int priority      = atoi(priorityStr);
-    int timeout       = atoi(timeoutStr);
+    // TODO: uncomment these once they are used
+    //int emuPort       = atoi(emuPortStr);
+    //int timeout       = atoi(timeoutStr);
 
     // Validate the argument values
     if (senderPort <= 1024 || senderPort >= 65536)
@@ -94,6 +95,8 @@ int main(int argc, char **argv) {
         ferrorExit("Invalid requester port");
     if (sendRate > 1000 || sendRate < 1) 
         ferrorExit("Invalid sendrate");
+    // TODO: validate emuPort
+    // TODO: validate timeout
     puts("");
 
     // ------------------------------------------------------------------------
@@ -173,11 +176,11 @@ int main(int argc, char **argv) {
     // Receive and discard packets until a REQUEST packet arrives
     char *filename = NULL;
     for (;;) {
-        void *msg = malloc(sizeof(struct packet));
-        bzero(msg, sizeof(struct packet));
+        void *msg = malloc(sizeof(struct new_packet));
+        bzero(msg, sizeof(struct new_packet));
 
         // Receive a message
-        size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct packet), 0,
+        size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct new_packet), 0,
             (struct sockaddr *)rp->ai_addr, &rp->ai_addrlen);
         if (bytesRecvd == -1) {
             perror("Recvfrom error");
@@ -186,18 +189,18 @@ int main(int argc, char **argv) {
         }
 
         // Deserialize the message into a packet 
-        struct packet *pkt = malloc(sizeof(struct packet));
-        bzero(pkt, sizeof(struct packet));
+        struct new_packet *pkt = malloc(sizeof(struct new_packet));
+        bzero(pkt, sizeof(struct new_packet));
         deserializePacket(msg, pkt);
 
         // Check for REQUEST packet
-        if (pkt->type == 'R') {
+        if (pkt->pkt.type == 'R') {
             // Print some statistics for the recvd packet
             printf("<- [Received REQUEST]: ");
             printPacketInfo(pkt, (struct sockaddr_storage *)rp->ai_addr);
 
             // Grab a copy of the filename
-            filename = strdup(pkt->payload);
+            filename = strdup(pkt->pkt.payload);
 
             // Cleanup packets
             free(pkt);
@@ -220,16 +223,22 @@ int main(int argc, char **argv) {
     else              printf("Opened file \"%s\" for reading.\n", filename);
 
     unsigned long long start = getTimeMS();
-    struct packet *pkt;
+    struct new_packet *pkt;
     for (;;) {
         // Is file part finished?
         if (feof(file) != 0) {
             // Create END packet and send it
-            pkt = malloc(sizeof(struct packet));
-            bzero(pkt, sizeof(struct packet));
-            pkt->type = 'E';
-            pkt->seq  = 0;
-            pkt->len  = 0;
+            pkt = malloc(sizeof(struct new_packet));
+            bzero(pkt, sizeof(struct new_packet));
+            pkt->priority = priority;
+            pkt->src_ip   = 0; // TODO
+            pkt->src_port = 0; // TODO
+            pkt->dst_ip   = 0; // TODO
+            pkt->dst_port = 0; // TODO
+            pkt->len      = 0; // TODO
+            pkt->pkt.type = 'E';
+            pkt->pkt.seq  = 0;
+            pkt->pkt.len  = 0;
 
             sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);
 
@@ -246,25 +255,23 @@ int main(int argc, char **argv) {
         }
 
         // Create DATA packet
-        pkt = malloc(sizeof(struct packet));
-        bzero(pkt, sizeof(struct packet));
-        pkt->type = 'D';
-        pkt->seq  = sequenceNum;
-        pkt->len  = payloadLen;
+        pkt = malloc(sizeof(struct new_packet));
+        bzero(pkt, sizeof(struct new_packet));
+        pkt->priority = priority;
+        pkt->src_ip   = 0; // TODO
+        pkt->src_port = 0; // TODO
+        pkt->dst_ip   = 0; // TODO
+        pkt->dst_port = 0; // TODO
+        pkt->len      = 0; // TODO
+        pkt->pkt.type = 'D';
+        pkt->pkt.seq  = sequenceNum;
+        pkt->pkt.len  = payloadLen;
 
         // Chunk the next batch of file data into this packet
         char buf[payloadLen];
         bzero(buf, payloadLen);
         fread(buf, 1, payloadLen, file); // TODO: check return value
-        memcpy(pkt->payload, buf, sizeof(buf));
-
-        /*
-        printf("[Packet Details]\n------------------\n");
-        printf("type : %c\n", pkt->type);
-        printf("seq  : %lu\n", pkt->seq);
-        printf("len  : %lu\n", pkt->len);
-        printf("payload: %s\n\n", pkt->payload);
-        */
+        memcpy(pkt->pkt.payload, buf, sizeof(buf));
 
         // Send the DATA packet to the requester 
         sendPacketTo(sockfd, pkt, (struct sockaddr *)rp->ai_addr);

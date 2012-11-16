@@ -6,17 +6,17 @@
 
 struct new_packet {
     char priority;
-    unsigned long src_ip;
-    unsigned int src_port;
-    unsigned long dst_ip;
-    unsigned int dst_port;
-    unsigned long len; 
-    struct packet pkt;
+    unsigned long  src_ip;
+    unsigned short src_port;
+    unsigned long  dst_ip;
+    unsigned short dst_port;
+    unsigned long  len; 
+    struct packet  pkt;
 } __attribute__((packed));
 
 #define NEW_PACKET_SIZE sizeof(struct new_packet)
 
-void *serializePacket(struct _newpacket *pkt);
+void *serializePacket(struct new_packet *pkt);
 void deserializePacket(void *msg, struct new_packet *pkt);
 
 void sendPacketTo(int sockfd, struct new_packet *pkt, struct sockaddr *addr);

@@ -31,3 +31,7 @@ recvd.txt
 
 # Log files
 log*
+
+# Tags file
+tags
+
