@@ -57,7 +57,6 @@ void deserializePacket(void *msg, struct new_packet *pkt) {
 
 void sendPacketTo(int sockfd, struct new_packet *pkt, struct sockaddr *addr) {
     struct new_packet *spkt = serializePacket(pkt);
-    printPacketInfo(pkt, (struct sockaddr_storage *)addr);
     size_t bytesSent = sendto(sockfd, spkt, NEW_PACKET_SIZE,
                               0, addr, sizeof(struct sockaddr));
 

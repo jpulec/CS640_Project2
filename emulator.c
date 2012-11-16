@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
 
 	struct new_packet *delayedPkt = NULL;
 	struct sockaddr_in recvAddr;
-	struct addrinfo nextAddr, *np;
+	struct addrinfo *np;
 
 	socklen_t recvLen = sizeof(recvAddr);
 	//socklen_t sendLen = sizeof(sendAddr);
@@ -236,7 +236,7 @@ int main(int argc, char **argv) {
 			
 			if(curEntry == NULL){
 				printf("Error: no forwarding info for destination:%lu on port:%hu", pkt->dst_ip, pkt->dst_port);
-				fprintf(logFile, "PACKET DROPPED\nDST_IP:%d", pkt->dst_ip);
+				fprintf(logFile, "PACKET DROPPED\nDST_IP:%lu", pkt->dst_ip);
 				free(pkt);
 				continue;
 			}
@@ -293,7 +293,6 @@ int main(int argc, char **argv) {
 					fprintf(logFile, "PACKET DROPPED\nDST_HOSTNAME:%s", curEntry->dst_hostname);
 				}
 				else{
-					printf("sending pkt"); fflush(stdout);
 					sendPacketTo(sockfd, delayedPkt, (struct sockaddr *)np->ai_addr);
 				}
 				delayedPkt = NULL;
@@ -405,12 +404,12 @@ struct new_packet *dequeuePkt(struct packet_node *q) {
 
 	// Update the number of enqueued packets
 	if (q->next != NULL){
-		printf("dequeue"); fflush(stdout);
 		if (q->next->pkt != NULL){
 			printf("Dequeued pkt: seq = \n");//%lu\n", q->pkt->pkt.seq);
 		}
 		return q->next->pkt;
 	}
+	return NULL;
 }
 
 void logOut(const char *msg, unsigned long long timestamp, struct new_packet *pkt) {

@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
     int windowSize    = 0; // Set from REQ pkt->pkt.len
     // TODO: uncomment these once they are used
     //int emuPort       = atoi(emuPortStr);
-    //int timeout       = atoi(timeoutStr);
+    int timeout       = atoi(timeoutStr);
 
     // Validate the argument values
     if (senderPort <= 1024 || senderPort >= 65536)
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
     struct addrinfo *sp;
     for(sp = senderinfo; sp != NULL; sp = sp->ai_next) {
         // Try to create a new socket
-        sockfd = socket(sp->ai_family, sp->ai_socktype, sp->ai_protocol);
+        sockfd = socket(sp->ai_family, sp->ai_socktype | SOCK_NONBLOCK, sp->ai_protocol);
         if (sockfd == -1) {
             perror("Socket error");
             continue;
@@ -215,38 +215,34 @@ int main(int argc, char **argv) {
         // Receive a message
         size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct new_packet), 0,
             (struct sockaddr *)rp->ai_addr, &rp->ai_addrlen);
-        if (bytesRecvd == -1) {
-            perror("Recvfrom error");
-            fprintf(stderr, "Failed/incomplete receive: ignoring\n");
-            continue;
-        }
+        if (bytesRecvd != -1) {
+		// Deserialize the message into a packet 
+		struct new_packet *pkt = malloc(sizeof(struct new_packet));
+		bzero(pkt, sizeof(struct new_packet));
+		deserializePacket(msg, pkt);
 
-        // Deserialize the message into a packet 
-        struct new_packet *pkt = malloc(sizeof(struct new_packet));
-        bzero(pkt, sizeof(struct new_packet));
-        deserializePacket(msg, pkt);
+		// Check for REQUEST packet
+		if (pkt->pkt.type == 'R') {
+		    // Print some statistics for the recvd packet
+		    printf("<- [Received REQUEST]: ");
+		    printPacketInfo(pkt, (struct sockaddr_storage *)rp->ai_addr);
 
-        // Check for REQUEST packet
-        if (pkt->pkt.type == 'R') {
-            // Print some statistics for the recvd packet
-            printf("<- [Received REQUEST]: ");
-            printPacketInfo(pkt, (struct sockaddr_storage *)rp->ai_addr);
+		    // Set the window size
+		    windowSize = pkt->pkt.len;
 
-            // Set the window size
-            windowSize = pkt->pkt.len;
+		    // Grab a copy of the filename
+		    filename = strdup(pkt->pkt.payload);
 
-            // Grab a copy of the filename
-            filename = strdup(pkt->pkt.payload);
+		    // Cleanup packets
+		    free(pkt);
+		    free(msg);
+		    break;
+		}
 
-            // Cleanup packets
-            free(pkt);
-            free(msg);
-            break;
-        }
-
-        // Cleanup packets
-        free(pkt);
-        free(msg);
+		// Cleanup packets
+		free(pkt);
+		free(msg);
+	}
     }
 
     // ------------------------------------------------------------------------
@@ -258,13 +254,13 @@ int main(int argc, char **argv) {
     if (file == NULL) perrorExit("File open error");
     else              printf("Opened file \"%s\" for reading.\n", filename);
 
-    unsigned long long start = getTimeMS();
-    unsigned int packetsSent = 0;
+    
+
     struct new_packet *pkt;
     for (;;) {
         // Is file part finished or a full window worth of pkts been sent?
         // TODO: handle window properly by waiting for ACKs and retransmitting
-        if (feof(file) != 0 || packetsSent >= windowSize) {
+        if (feof(file) != 0) {
             // Create END packet and send it
             pkt = malloc(sizeof(struct new_packet));
             bzero(pkt, sizeof(struct new_packet));
@@ -279,48 +275,104 @@ int main(int argc, char **argv) {
             pkt->pkt.len  = 0;
 
             sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
-
-            printf("** [ Sent full window of packets ] **\n");
-
+	    
+            printf("** [ Sent all packets ] **\n");
             free(pkt);
             break;
-        }
+	}
 
-        // Send rate limiter
-        unsigned long long dt = getTimeMS() - start;
-        if (dt < 1000 / sendRate) {
-            continue; 
-        } else {
-            start = getTimeMS();
-        }
+	unsigned long long start = getTimeMS();
+	
+	unsigned int packetsSent = 0;
+	struct new_packet *buffer = malloc(windowSize*sizeof(struct new_packet));
+	unsigned long timeouts[windowSize];
+	while(packetsSent < windowSize){
+		// Send rate limiter
+		unsigned long long dt = getTimeMS() - start;
+		if (dt < 1000 / sendRate) {
+		    continue; 
+		} else {
+		    start = getTimeMS();
+		}
+		// Create DATA packet
+		pkt = malloc(sizeof(struct new_packet));
+		bzero(pkt, sizeof(struct new_packet));
+		pkt->priority = priority;
+		pkt->src_ip   = ((struct sockaddr_in*)sp)->sin_addr.s_addr ; // TODO
+		pkt->src_port = senderPort; // TODO
+		pkt->dst_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr ; // TODO
+		pkt->dst_port = requesterPort; // TODO
+		pkt->len      = 0; // TODO
+		pkt->pkt.type = 'D';
+		pkt->pkt.seq  = sequenceNum++;
+		pkt->pkt.len  = payloadLen;
 
-        // Create DATA packet
-        pkt = malloc(sizeof(struct new_packet));
-        bzero(pkt, sizeof(struct new_packet));
-        pkt->priority = priority;
-        pkt->src_ip   = ((struct sockaddr_in*)sp)->sin_addr.s_addr ; // TODO
-        pkt->src_port = senderPort; // TODO
-        pkt->dst_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr ; // TODO
-        pkt->dst_port = requesterPort; // TODO
-        pkt->len      = 0; // TODO
-        pkt->pkt.type = 'D';
-        pkt->pkt.seq  = sequenceNum++;
-        pkt->pkt.len  = payloadLen;
+		// Chunk the next batch of file data into this packet
+		char buf[payloadLen];
+		bzero(buf, payloadLen);
+		fread(buf, 1, payloadLen, file); // TODO: check return value
+		memcpy(pkt->pkt.payload, buf, sizeof(buf));
 
-        // Chunk the next batch of file data into this packet
-        char buf[payloadLen];
-        bzero(buf, payloadLen);
-        fread(buf, 1, payloadLen, file); // TODO: check return value
-        memcpy(pkt->pkt.payload, buf, sizeof(buf));
+		buffer[packetsSent] = *pkt;
+		timeouts[packetsSent] = getTimeMS();
 
-        // Send the DATA packet to the requester 
-        sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
+		// Send the DATA packet to the emulator 
+		sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
 
-        // Update packets sent counter for window size
-        ++packetsSent;
+		// Update packets sent counter for window size
+		++packetsSent;
 
-        // Cleanup packets
-        free(pkt);
+		// Cleanup packets
+		//free(pkt);
+	}
+	int i;
+	int acking = 1;
+	while( acking){
+		acking = 0;
+		void *msg = malloc(sizeof(struct new_packet));
+		bzero(msg, sizeof(struct new_packet));
+
+		// Receive a message
+		size_t bytesRecvd = recvfrom(sockfd, msg, sizeof(struct new_packet), 0,
+		    (struct sockaddr *)rp->ai_addr, &rp->ai_addrlen);
+		if(bytesRecvd != -1){
+			// Deserialize the message into a packet 
+			struct new_packet *pkt = malloc(sizeof(struct new_packet));
+			bzero(pkt, sizeof(struct new_packet));
+			deserializePacket(msg, pkt);
+
+			// Check for ACK packet
+			if (pkt->pkt.type == 'A') {
+			    // Print some statistics for the recvd packet
+			    printf("<- [Received ACK]: ");
+			    printPacketInfo(pkt, (struct sockaddr_storage *)rp->ai_addr);
+			    
+			    int j;
+			    for(j = 0; j < packetsSent; ++j){
+				if(buffer[j].pkt.seq == pkt->pkt.seq){
+					timeouts[j] = 0;
+				}
+			    }
+
+			}
+
+			// Cleanup packets
+			free(pkt);
+			free(msg);
+		}
+		for(i = 0; i < packetsSent; ++i){
+		    if(timeouts[i] != 0){
+		    	//printf("%lu\n", timeouts[i]); fflush(stdout);
+		    	acking = 1;
+			if (getTimeMS() - timeouts[i] > timeout){
+				// Retransmit pkt
+				sendPacketTo(sockfd, &buffer[i], (struct sockaddr*)ep->ai_addr);
+				timeouts[i] = getTimeMS();
+			}
+		    }
+		}
+
+	}
     }
 
     // Cleanup the file

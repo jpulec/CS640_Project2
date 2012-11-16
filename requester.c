@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
     FILE *file = fopen("recvd.txt", "at");
     if (file == NULL) perrorExit("File open error");
     struct file_part *part = fileParts->parts;
-    while (part != NULL) {
+    //while (part != NULL) {
         // Convert the sender's port # to a string
         /*
         char senderPortStr[6] = "\0\0\0\0\0\0";
@@ -218,28 +218,8 @@ int main(int argc, char **argv) {
    
 
 	sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
-	printf("Pkt sent"); fflush(stdout);
         free(pkt);
     
-        // ------------------------------------------------------------------------
-        // Wait for an ACK on the request packet
-        // TODO: this is temporary
-        struct sockaddr_in emuAddr;
-        socklen_t emuLen = sizeof(emuAddr);
-        int bytesRecvd = recvfrom(sockfd, pkt, sizeof(struct new_packet), 0,
-            (struct sockaddr *)&emuAddr, &emuLen);
-        if (bytesRecvd != -1) {
-            printf("<- [Received ACK]: ");
-            printPacketInfo(pkt, (struct sockaddr_storage *)&emuAddr);
-        } else {
-            perrorExit("Recv failed.\n");
-        }
-
-        // Create the file to write data to
-        /*
-        if (access(fileOption, F_OK) != -1) // if it already exists
-            remove(fileOption);             // delete it
-        */
 
         // ------------------------------------------------------------------------
         // Connect to emulator to receive all parts of requested file
@@ -284,6 +264,26 @@ int main(int argc, char **argv) {
                         "Incomplete file write: %d bytes written, %lu p len",
                         (int)bytesWritten, p.pkt.len);
                 }
+
+		// Requester now ACK's this packet
+		struct new_packet *ack = NULL;
+		ack = malloc(sizeof(struct new_packet));
+		bzero(ack, sizeof(struct new_packet));
+		ack->priority = 1;
+		ack->src_ip   = ((struct sockaddr_in*)rp)->sin_addr.s_addr; // TODO
+		ack->src_port = requesterPort; // TODO
+		ack->dst_ip   = ((struct sockaddr_in*)sp)->sin_addr.s_addr; // TODO
+		ack->dst_port = part->sender_port; // TODO
+		ack->len      = sizeof(struct packet) - MAX_PAYLOAD + strlen(fileOption) + 1;
+		// encapsulated packet
+		ack->pkt.type = 'A';
+		ack->pkt.seq  = p.pkt.seq;
+		ack->pkt.len  = windowSize; 
+		strcpy(ack->pkt.payload, fileOption);
+   
+
+		sendPacketTo(sockfd, pkt, (struct sockaddr *)ep->ai_addr);
+		free(pkt);
             }
     
             // Handle END packet
@@ -305,7 +305,7 @@ int main(int argc, char **argv) {
         part = part->next_part;
 
         freeaddrinfo(emuinfo);
-    }
+    
 
     // TODO: this crashes the program... figure out why
     //fclose(file);
